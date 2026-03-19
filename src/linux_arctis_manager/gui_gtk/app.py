@@ -255,16 +255,6 @@ class ArctisManagerApp(Adw.Application):
     def __init__(self):
         super().__init__(application_id='com.github.arctismanager')
 
-    def do_startup(self):
-        Adw.Application.do_startup(self)
-        # Suppress the legacy GTK dark theme setting and use Libadwaita's style manager
-        gtk_settings = Gtk.Settings.get_default()
-        if gtk_settings:
-            gtk_settings.set_property('gtk-application-prefer-dark-theme', False)
-        
-        style_manager = Adw.StyleManager.get_default()
-        style_manager.set_color_scheme(Adw.ColorScheme.PREFER_LIGHT) # Fallback, libadwaita will follow system settings naturally
-
 
     def do_activate(self):
         win = self.props.active_window
@@ -273,9 +263,15 @@ class ArctisManagerApp(Adw.Application):
         win.present()
 
 def main():
+    import signal
+    signal.signal(signal.SIGINT, signal.SIG_DFL)  # Allows GTK to handle Ctrl+C cleanly without throwing Python traces
+    
     I18n.get_instance().set_language('en')
     app = ArctisManagerApp()
-    sys.exit(app.run(sys.argv))
+    try:
+        sys.exit(app.run(sys.argv))
+    except KeyboardInterrupt:
+        sys.exit(0)
 
 if __name__ == '__main__':
     main()
