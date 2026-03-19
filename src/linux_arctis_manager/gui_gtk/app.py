@@ -265,7 +265,7 @@ class ArctisManagerApp(Adw.Application):
         win.present()
 
 def main():
-    I18n.get_instance().load_lang('en')
+    I18n.get_instance().set_language('en')
     app = ArctisManagerApp()
     sys.exit(app.run(sys.argv))
 
