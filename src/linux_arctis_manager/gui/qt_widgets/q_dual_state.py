@@ -14,6 +14,8 @@ class QDualState(QWidget):
 
         self.main_layout = QHBoxLayout()
         self.main_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.setMinimumHeight(28)
         self.off_text = off_text
         self.on_text = on_text
 

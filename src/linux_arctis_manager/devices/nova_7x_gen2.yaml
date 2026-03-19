@@ -79,6 +79,15 @@ device:
           on_label: on
         default: 0x00 # off
         update_sequence: [0x3a, 'value']
+      bluetooth_power_status:
+        type: toggle
+        values:
+          off: 0x00
+          on: 0x01
+          off_label: off
+          on_label: on
+        default: 0x00 # off
+        update_sequence: [0xb2, 'value']
       bluetooth_auto_mute:
         type: slider
         min: 0x00
@@ -90,15 +99,6 @@ device:
           0x02: mute
         default: 0x00 # off
         update_sequence: [0xb3, 'value']
-      bluetooth_power_status:
-        type: toggle
-        values:
-          off: 0x00
-          on: 0x01
-          off_label: off
-          on_label: on
-        default: 0x00 # off
-        update_sequence: [0xb2, 'value']
     microphone:
       mic_volume:
         type: slider
