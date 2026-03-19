@@ -34,15 +34,15 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         self.view_stack.set_vexpand(True)
         vbox.append(self.view_stack)
 
-        # --- TAB 1: General ---
-        self.general_page = Adw.PreferencesPage()
-        self.general_page.set_icon_name("preferences-system-symbolic")
-        self.view_stack.add_titled(self.general_page, "general", I18n.translate('ui', 'general'))
+        # --- TAB 1: Dashboard ---
+        self.dashboard_page = Adw.PreferencesPage()
+        self.dashboard_page.set_icon_name("dashboard-show-symbolic")
+        self.view_stack.add_titled(self.dashboard_page, "dashboard", I18n.translate('ui', 'status'))
 
-        # --- TAB 2: Device ---
-        self.device_page = Adw.PreferencesPage()
-        self.device_page.set_icon_name("audio-headset-symbolic")
-        self.view_stack.add_titled(self.device_page, "device", I18n.translate('ui', 'device'))
+        # --- TAB 2: Settings ---
+        self.settings_page = Adw.PreferencesPage()
+        self.settings_page.set_icon_name("preferences-system-symbolic")
+        self.view_stack.add_titled(self.settings_page, "settings", "Settings")
 
         self.dbus_client = GtkDbusClient(
             on_status_cb=self.on_status_received,
@@ -58,8 +58,8 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         self._status_rows = []
         self._settings_groups = []
         
-        self.status_group = Adw.PreferencesGroup(title="Status")
-        self.device_page.add(self.status_group)
+        self.status_group = Adw.PreferencesGroup()
+        self.dashboard_page.add(self.status_group)
         
         self.dbus_client.start()
         self.connect('close-request', self.on_close)
@@ -141,15 +141,9 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
     def refresh_settings_ui(self):
         self._updating_ui = True
         
-        # Clear pages (except status group on device page)
+        # Clear existing settings groups
         for group in self._settings_groups:
-            if group in self.general_page:
-                self.general_page.remove(group)
-            else:
-                try:
-                    self.device_page.remove(group)
-                except Exception:
-                    pass
+            self.settings_page.remove(group)
         self._settings_groups.clear()
 
         settings_config = self._settings_data.get('settings_config', {})
@@ -160,11 +154,8 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             if not settings_group:
                 continue
                 
-            group = Adw.PreferencesGroup()
-            if section == 'general':
-                self.general_page.add(group)
-            else:
-                self.device_page.add(group)
+            group = Adw.PreferencesGroup(title=I18n.translate('ui', section))
+            self.settings_page.add(group)
             self._settings_groups.append(group)
                 
             for name, value in settings_group.items():
@@ -263,6 +254,17 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
 class ArctisManagerApp(Adw.Application):
     def __init__(self):
         super().__init__(application_id='com.github.arctismanager')
+
+    def do_startup(self):
+        Adw.Application.do_startup(self)
+        # Suppress the legacy GTK dark theme setting and use Libadwaita's style manager
+        gtk_settings = Gtk.Settings.get_default()
+        if gtk_settings:
+            gtk_settings.set_property('gtk-application-prefer-dark-theme', False)
+        
+        style_manager = Adw.StyleManager.get_default()
+        style_manager.set_color_scheme(Adw.ColorScheme.PREFER_LIGHT) # Fallback, libadwaita will follow system settings naturally
+
 
     def do_activate(self):
         win = self.props.active_window
