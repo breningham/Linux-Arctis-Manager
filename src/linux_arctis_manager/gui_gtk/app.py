@@ -4,7 +4,7 @@ import logging
 
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
-from gi.repository import Gtk, Adw, GLib, GObject
+from gi.repository import Gtk, Adw, GLib
 
 from linux_arctis_manager.i18n import I18n
 from linux_arctis_manager.gui_gtk.dbus_client import GtkDbusClient
@@ -15,16 +15,12 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.set_title("Arctis Manager")
-        self.set_default_size(650, 800)
+        self.set_default_size(650, 850)
 
-        # Main vertical box
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.set_content(vbox)
 
-        # The ViewStack holds our different pages
         self.view_stack = Adw.ViewStack()
-        
-        # Header Bar with the ViewSwitcher
         header_bar = Adw.HeaderBar()
         switcher_title = Adw.ViewSwitcherTitle()
         switcher_title.set_stack(self.view_stack)
@@ -35,31 +31,49 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         vbox.append(self.view_stack)
 
         # --- TAB 1: Dashboard ---
-        self.dashboard_page = Adw.PreferencesPage()
-        self.dashboard_page.set_icon_name("dashboard-show-symbolic")
-        self.view_stack.add_titled(self.dashboard_page, "dashboard", I18n.translate('ui', 'status'))
+        self.dashboard_scroll = Gtk.ScrolledWindow()
+        self.dashboard_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        
+        dash_page = self.view_stack.add_titled(self.dashboard_scroll, "dashboard", I18n.translate('ui', 'status'))
+        dash_page.set_icon_name("dashboard-show-symbolic")
+
+        dash_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.dashboard_scroll.set_child(dash_vbox)
+
+        self.hero = Adw.StatusPage()
+        self.hero.set_title(I18n.translate('ui', 'app_name'))
+        self.hero.set_icon_name("audio-headset-symbolic")
+        self.hero.set_description(I18n.translate('ui', 'no_device_detected'))
+        dash_vbox.append(self.hero)
+
+        self.dash_clamp = Adw.Clamp()
+        self.dash_clamp.set_maximum_size(600)
+        dash_vbox.append(self.dash_clamp)
+
+        self.dash_grid = Gtk.Grid()
+        self.dash_grid.set_column_spacing(16)
+        self.dash_grid.set_row_spacing(16)
+        self.dash_grid.set_margin_start(16)
+        self.dash_grid.set_margin_end(16)
+        self.dash_grid.set_margin_bottom(32)
+        self.dash_grid.set_column_homogeneous(True)
+        self.dash_clamp.set_child(self.dash_grid)
 
         # --- TAB 2: Settings ---
         self.settings_page = Adw.PreferencesPage()
-        self.settings_page.set_icon_name("preferences-system-symbolic")
-        self.view_stack.add_titled(self.settings_page, "settings", "Settings")
+        set_page = self.view_stack.add_titled(self.settings_page, "settings", "Settings")
+        set_page.set_icon_name("preferences-system-symbolic")
 
         self.dbus_client = GtkDbusClient(
             on_status_cb=self.on_status_received,
             on_settings_cb=self.on_settings_received
         )
         
-        self._status_widgets = {}
-        self._settings_widgets = {}
+        self._settings_groups = []
         self._settings_data = {}
         self._status_data = {}
         self._option_lists = {}
         self._updating_ui = False
-        self._status_rows = []
-        self._settings_groups = []
-        
-        self.status_group = Adw.PreferencesGroup()
-        self.dashboard_page.add(self.status_group)
         
         self.dbus_client.start()
         self.connect('close-request', self.on_close)
@@ -70,64 +84,152 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
 
     def get_list_options_cb(self, list_name, opts):
         self._option_lists[list_name] = opts
-        # We trigger a refresh of settings to ensure combo boxes update
         if self._settings_data:
             self.refresh_settings_ui()
+
+    def make_value_card(self, title, value_text, icon_name, css_class="title-1"):
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        card.add_css_class("card")
+
+        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        inner.set_margin_top(24); inner.set_margin_bottom(24)
+        inner.set_margin_start(24); inner.set_margin_end(24)
+        inner.set_vexpand(True)
+        card.append(inner)
+
+        top_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        icon = Gtk.Image.new_from_icon_name(icon_name)
+        icon.set_pixel_size(24)
+        top_box.append(icon)
+
+        lbl_title = Gtk.Label(label=title)
+        lbl_title.add_css_class("heading")
+        top_box.append(lbl_title)
+        inner.append(top_box)
+
+        lbl_val = Gtk.Label(label=value_text)
+        lbl_val.add_css_class(css_class)
+        lbl_val.add_css_class("numeric")
+        lbl_val.set_halign(Gtk.Align.CENTER)
+        lbl_val.set_valign(Gtk.Align.CENTER)
+        lbl_val.set_vexpand(True)
+        inner.append(lbl_val)
+
+        return card
+
+    def make_dual_progress_card(self, title, lbl1, val1, lbl2, val2):
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        card.add_css_class("card")
+
+        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        inner.set_margin_top(24); inner.set_margin_bottom(24)
+        inner.set_margin_start(24); inner.set_margin_end(24)
+        card.append(inner)
+
+        lbl_title = Gtk.Label(label=title)
+        lbl_title.add_css_class("heading")
+        lbl_title.set_halign(Gtk.Align.START)
+        inner.append(lbl_title)
+
+        def make_row(l_text, v):
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+            lbl = Gtk.Label(label=l_text)
+            lbl.set_size_request(60, -1)
+            lbl.set_halign(Gtk.Align.START)
+            bar = Gtk.ProgressBar()
+            bar.set_fraction(v / 100.0)
+            bar.set_hexpand(True)
+            bar.set_valign(Gtk.Align.CENTER)
+            val_lbl = Gtk.Label(label=f"{int(v)}%")
+            val_lbl.set_size_request(40, -1)
+            val_lbl.set_halign(Gtk.Align.END)
+            val_lbl.add_css_class("numeric")
+            val_lbl.add_css_class("dim-label")
+            row.append(lbl)
+            row.append(bar)
+            row.append(val_lbl)
+            return row
+
+        inner.append(make_row(lbl1, val1))
+        inner.append(make_row(lbl2, val2))
+        return card
 
     def on_status_received(self, status: dict):
         if status == self._status_data:
             return
         self._status_data = status
         
-        # Clear existing status rows
-        for row in self._status_rows:
-            self.status_group.remove(row)
-        self._status_rows.clear()
+        while child := self.dash_grid.get_first_child():
+            self.dash_grid.remove(child)
 
         if not status:
-            row = Adw.ActionRow(title=I18n.translate('ui', 'no_device_detected'))
-            self.status_group.add(row)
-            self._status_rows.append(row)
+            self.hero.set_description(I18n.translate('ui', 'no_device_detected'))
             return
 
-        for category, status_obj in status.items():
-            for stat_name, stat_o in status_obj.items():
-                title = I18n.translate('status', stat_name)
-                row = Adw.ActionRow(title=title)
-                
-                if stat_o['type'] == 'percentage':
-                    box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-                    bar = Gtk.ProgressBar()
-                    val = float(stat_o['value'])
-                    bar.set_fraction(val / 100.0)
-                    
-                    # You could add CSS classes here to change colors, similar to Qt
-                    bar.add_css_class("osd")
-                    bar.set_valign(Gtk.Align.CENTER)
-                    
-                    lbl = Gtk.Label(label=f"{int(val)}%")
-                    box.append(bar)
-                    box.append(lbl)
-                    row.add_suffix(box)
-                else:
-                    val_str = I18n.translate('status_values', stat_o['value'])
-                    if stat_name == 'cable_charging':
-                        val_str = f"⚡ {val_str}" if stat_o['value'] == 'on' else f"🔌 {val_str}"
-                    elif stat_name == 'bluetooth_connection':
-                        val_str = f"🔵 {val_str}" if stat_o['value'] == 'connected' else f"⚪ {val_str}"
-                    
-                    lbl = Gtk.Label(label=val_str)
-                    lbl.set_valign(Gtk.Align.CENTER)
-                    row.add_suffix(lbl)
-                
-                self.status_group.add(row)
-                self._status_rows.append(row)
+        flat_status = {}
+        for cat, obj in status.items():
+            for k, v in obj.items():
+                flat_status[k] = v
+
+        power_val = flat_status.get('headset_power_status', {}).get('value', 'offline')
+        if power_val == 'online':
+            self.hero.set_description("Connected and Active")
+        elif power_val == 'charging':
+            self.hero.set_description("Charging (Offline)")
+        else:
+            self.hero.set_description("Offline")
+
+        # Grid layout logic
+        row_idx = 0
+
+        # Battery & Bluetooth row
+        batt_o = flat_status.get('headset_battery_charge')
+        charging_o = flat_status.get('cable_charging')
+        if batt_o:
+            val = float(batt_o['value'])
+            is_charging = charging_o and charging_o['value'] == 'on'
+            
+            icon = "battery-good-charging-symbolic" if is_charging else "battery-good-symbolic"
+            if not is_charging and val <= 20: icon = "battery-empty-symbolic"
+            elif not is_charging and val <= 50: icon = "battery-low-symbolic"
+            
+            txt = f"{int(val)}%" + (" ⚡" if is_charging else "")
+            batt_card = self.make_value_card("Battery", txt, icon, "title-1")
+            self.dash_grid.attach(batt_card, 0, row_idx, 1, 1)
+
+        bt_o = flat_status.get('bluetooth_connection')
+        if bt_o:
+            bt_val = bt_o['value']
+            is_bt_conn = bt_val == 'connected'
+            icon = "bluetooth-active-symbolic" if is_bt_conn else "bluetooth-disabled-symbolic"
+            txt = "Connected" if is_bt_conn else "Disconnected"
+            bt_card = self.make_value_card("Bluetooth", txt, icon, "title-2" if is_bt_conn else "title-3")
+            self.dash_grid.attach(bt_card, 1, row_idx, 1, 1)
+            
+        if batt_o or bt_o:
+            row_idx += 1
+
+        # Mixes
+        chat_o = flat_status.get('chat_mix')
+        media_o = flat_status.get('media_mix')
+        if chat_o and media_o:
+            mix_card = self.make_dual_progress_card("Audio Mix", "Chat", float(chat_o['value']), "Media", float(media_o['value']))
+            self.dash_grid.attach(mix_card, 0, row_idx, 2, 1)
+            row_idx += 1
+
+        # Mic
+        mic_o = flat_status.get('mic_status')
+        if mic_o:
+            is_muted = mic_o['value'] == 'muted'
+            icon = "microphone-sensitivity-muted-symbolic" if is_muted else "audio-input-microphone-symbolic"
+            txt = "Muted" if is_muted else "Active"
+            mic_card = self.make_value_card("Microphone", txt, icon, "title-3" if is_muted else "title-2")
+            self.dash_grid.attach(mic_card, 0, row_idx, 2, 1)
 
     def on_settings_received(self, new_settings: dict):
         if new_settings == self._settings_data:
             return
             
-        # Check if we need to request lists
         settings_config = new_settings.get('settings_config', {})
         for config_name, kwargs in settings_config.items():
             if kwargs.get('type') == 'select':
@@ -141,14 +243,12 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
     def refresh_settings_ui(self):
         self._updating_ui = True
         
-        # Clear existing settings groups
         for group in self._settings_groups:
             self.settings_page.remove(group)
         self._settings_groups.clear()
 
         settings_config = self._settings_data.get('settings_config', {})
         
-        # We sort by 'general' and 'device'
         for section in ['general', 'device']:
             settings_group = self._settings_data.get(section, {})
             if not settings_group:
@@ -204,7 +304,6 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                     box.append(scale)
                     box.append(val_lbl)
                     
-                    # For libadwaita ActionRow, add child
                     row.add_suffix(box)
                     box.set_size_request(200, -1)
                     group.add(row)
@@ -231,7 +330,6 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                         group.add(row)
                         
                 elif stype == 'discrete_map':
-                    # Can map as a combo box in GTK for now
                     mappings = cfg.get('values_mapping', {})
                     opts = [{'id': int(k), 'name': I18n.translate('settings_values', v)} for k, v in mappings.items()]
                     
@@ -247,6 +345,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                         self.dbus_client.change_setting(n, o[i]['id'])
                         
                     row.connect('notify::selected', on_discrete_change)
+                        
                     group.add(row)
                     
         self._updating_ui = False
@@ -254,7 +353,6 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
 class ArctisManagerApp(Adw.Application):
     def __init__(self):
         super().__init__(application_id='com.github.arctismanager')
-
 
     def do_activate(self):
         win = self.props.active_window
@@ -264,7 +362,7 @@ class ArctisManagerApp(Adw.Application):
 
 def main():
     import signal
-    signal.signal(signal.SIGINT, signal.SIG_DFL)  # Allows GTK to handle Ctrl+C cleanly without throwing Python traces
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
     
     I18n.get_instance().set_language('en')
     app = ArctisManagerApp()
