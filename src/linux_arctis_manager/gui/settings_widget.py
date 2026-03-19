@@ -219,18 +219,45 @@ class QSettingsWidget(QWidget):
             widget.new_value.connect(lambda value: callback(config, value))
 
         elif config.type == SettingType.SELECT:
-            widget = QComboBox()
+            widget = QWidget()
+            widget_layout = QVBoxLayout()
+            widget_layout.setContentsMargins(0, 5, 0, 15)
+            widget.setLayout(widget_layout)
+
+            label_text = I18n.get_instance().translate('settings', config.name)
+            title_label = QLabel(label_text)
+            title_font = title_label.font()
+            title_font.setBold(True)
+            title_label.setFont(title_font)
+            widget_layout.addWidget(title_label)
+            
+            desc_text = I18n.get_instance().translate('settings_descriptions', config.name)
+            if desc_text != config.name:
+                desc_label = QLabel(desc_text)
+                desc_label.setWordWrap(True)
+                desc_label.setStyleSheet("color: gray; font-size: 11px;")
+                widget_layout.addWidget(desc_label)
+
+            select_widget = QComboBox()
             options = self._option_lists.get(config.options_source, [])
+            
+            if config.options_source == 'pulse_audio_devices':
+                options = [{'id': 'none', 'name': I18n.get_instance().translate('settings_values', 'none')}] + options
+
             if options:
-                widget.addItems([o['name'] for o in options])
+                select_widget.addItems([o['name'] for o in options])
                 option = next((o for o in options if o['id'] == value), None)
-                widget.setCurrentIndex(options.index(option or options[0]))
-            widget.currentIndexChanged.connect(lambda index: callback(config, self._option_lists[config.options_source][index]['id']))
+                select_widget.setCurrentIndex(options.index(option or options[0]))
+                
+                # Use a default argument in the lambda to capture the current `options` list
+                select_widget.currentIndexChanged.connect(lambda index, opts=options: callback(config, opts[index]['id']))
+                
+            widget_layout.addWidget(select_widget)
         else:
             widget = QLabel(f'UNKNOWN TYPE: {config.type}')
 
         if widget:
-            if config.type in [SettingType.SLIDER, SettingType.TOGGLE]:
+            if config.type in [SettingType.SLIDER, SettingType.TOGGLE, SettingType.SELECT]:
                 return widget
             
             main_layout.addWidget(QLabel(I18n.get_instance().translate('settings', config.name)))

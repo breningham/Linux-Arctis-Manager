@@ -324,7 +324,7 @@ class CoreEngine:
     def redirect_audio_on_disconnect(self):
         redirect_device = (
             self.general_settings.redirect_audio_on_disconnect_device
-            if self.general_settings.redirect_audio_on_disconnect
+            if self.general_settings.redirect_audio_on_disconnect_device and self.general_settings.redirect_audio_on_disconnect_device != 'none'
             else None
         )
         current_default_device = self.pa_audio_manager.get_default_device()
