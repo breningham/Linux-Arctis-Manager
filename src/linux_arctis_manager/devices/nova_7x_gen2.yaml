@@ -10,7 +10,7 @@ device:
 
   command_interface_index: [0, 3] # bInterfaceNumber, bAlternateSetting
   command_report_id: 0x00
-  listen_interface_indexes: [3, 5] # Listen to both in case async b9 03 arrives on 5
+  listen_interface_indexes: [3] # Listen to both in case async b9 03 arrives on 5
 
   device_init:
     - [0x10]  # ???
@@ -22,7 +22,9 @@ device:
     - [0x37, 'settings.mic_volume']                 # Mic Level (00 - 07)
     - [0xb3, 'settings.bluetooth_auto_mute']        # Bluetooth Call Mute (Off=00 - Mute=02)
     - [0x39, 'settings.mic_side_tone']              # SideTones (Off=00 - Max=03)
+    - [0x09] # ???
     - ['status.request']                            # Status Request
+    - [0x09] # ???
   status:
     request: 0xb0
     response_mapping:
