@@ -46,13 +46,13 @@ class QStatusWidget(QWidget):
             category_label = QLabel(I18n.get_instance().translate('status', category))
             category_font = category_label.font()
             category_font.setBold(True)
-            category_font.setPointSize(16)
+            category_font.setPointSize(14)
             category_label.setFont(category_font)
             self.main_layout.addWidget(category_label)
 
             for status, status_o in status_obj.items():
                 label = QLabel(
-                    f"{I18n.translate('status', status)}: "
+                    f"<b>{I18n.translate('status', status)}:</b> "
                     f"{I18n.translate('status_values', status_o['value'])}"
                     f"{'%' if status_o['type'] == 'percentage' else ''}"
                 )

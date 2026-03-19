@@ -44,9 +44,9 @@ class QMainApp(QBaseDesktopApp):
         self.status_widget = QStatusWidget(self.main_panel)
         self.general_settings_widget = QSettingsWidget(self.main_panel, 'general', 'general')
         self.device_settings_widget = QSettingsWidget(self.main_panel, 'device', 'device')
+        self.device_settings_widget.layout().insertWidget(1, self.status_widget)
 
         self.main_panel_widgets: dict[str, QWidget] = {
-            'status': self.status_widget,
             'general': self.general_settings_widget,
             'device': self.device_settings_widget,
         }
@@ -59,7 +59,7 @@ class QMainApp(QBaseDesktopApp):
         self.dbus_wrapper.sig_settings.connect(self.general_settings_widget.update_settings)
         self.dbus_wrapper.sig_settings.connect(self.device_settings_widget.update_settings)
 
-        self.switch_panel('status')
+        self.switch_panel('general')
         self.dbus_wrapper.start()
 
         self.destroyed.connect(self.sig_stop)
@@ -96,7 +96,7 @@ class QMainApp(QBaseDesktopApp):
         # SIDE PANEL
         self.side_panel = QListWidget()
         self.side_panel_items = [
-            ('status', I18n.get_instance().translate('ui', 'status')),
+            
             ('general', I18n.get_instance().translate('ui', 'general')),
             ('device', I18n.get_instance().translate('ui', 'device')),
         ]
