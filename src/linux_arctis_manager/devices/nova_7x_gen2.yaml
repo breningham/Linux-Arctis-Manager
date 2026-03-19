@@ -190,6 +190,7 @@ device:
         0x02: connected
         0x03: disconnected
         0x04: connected
+        0x05: connected
     bluetooth_power_status:
       type: on_off
       off: 0x01
