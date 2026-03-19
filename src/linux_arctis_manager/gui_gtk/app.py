@@ -103,7 +103,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         dash_page = self.view_stack.add_titled(
             self.dashboard_scroll, "dashboard", I18n.translate("ui", "status")
         )
-        dash_page.set_icon_name("dashboard-show-symbolic")
+        dash_page.set_icon_name("audio-card-symbolic")
 
         dash_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.dashboard_scroll.set_child(dash_vbox)
@@ -306,7 +306,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             is_charging = charging_o and charging_o["value"] == "on"
 
             icon = (
-                "battery-level-100-charging-symbolic"
+                "battery-level-100-charged-symbolic"
                 if is_charging
                 else "battery-level-100-symbolic"
             )
@@ -349,7 +349,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         if mic_o:
             is_muted = mic_o["value"] == "muted"
             icon = (
-                "audio-input-microphone-muted-symbolic"
+                "microphone-sensitivity-muted-symbolic"
                 if is_muted
                 else "audio-input-microphone-symbolic"
             )
@@ -595,6 +595,14 @@ class ArctisManagerApp(Adw.Application):
         super().__init__(application_id="dev.ingham.lam-gui.gtk")
 
     def do_activate(self):
+        # Fallback for systems (like bare Arch WMs) that don't set a default GTK icon theme
+        settings = Gtk.Settings.get_default()
+        if settings and (
+            not settings.get_property("gtk-icon-theme-name")
+            or settings.get_property("gtk-icon-theme-name") == "gnome"
+        ):
+            settings.set_property("gtk-icon-theme-name", "Adwaita")
+
         win = self.props.active_window
         if not win:
             win = ArctisManagerWindow(application=self)
