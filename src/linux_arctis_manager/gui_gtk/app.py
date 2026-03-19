@@ -1,6 +1,7 @@
 import sys
 import gi
 import logging
+import math
 
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
@@ -10,6 +11,55 @@ from linux_arctis_manager.i18n import I18n
 from linux_arctis_manager.gui_gtk.dbus_client import GtkDbusClient
 
 logger = logging.getLogger('GtkApp')
+
+
+class MixDialWidget(Gtk.DrawingArea):
+    def __init__(self):
+        super().__init__()
+        self.set_size_request(150, 110)
+        self.set_draw_func(self.on_draw)
+        self.mix_value = 50.0  # 0 to 100 (0 = Game, 100 = Chat)
+
+    def set_mix(self, val):
+        self.mix_value = val
+        self.queue_draw()
+
+    def on_draw(self, area, cr, width, height):
+        xc = width / 2.0
+        yc = height * 0.85
+        radius = min(width/2.0, height * 0.75) - 12
+        
+        start_angle = math.pi * 0.85
+        end_angle = math.pi * 2.15
+        
+        # 1. Draw Media Background Arc (Purple)
+        cr.set_source_rgba(0.5, 0.2, 0.8, 1.0)
+        cr.set_line_width(12)
+        cr.set_line_cap(1) # ROUND
+        cr.arc(xc, yc, radius, start_angle, end_angle)
+        cr.stroke()
+
+        # 2. Draw Chat Overlay Arc (Green)
+        split_angle = start_angle + (self.mix_value / 100.0) * (end_angle - start_angle)
+        if split_angle > start_angle:
+            cr.set_source_rgba(0.2, 0.8, 0.4, 1.0)
+            cr.set_line_width(12)
+            cr.set_line_cap(1)
+            cr.arc(xc, yc, radius, start_angle, split_angle)
+            cr.stroke()
+
+        # 3. Draw the Knob indicator
+        cr.set_source_rgba(1.0, 1.0, 1.0, 1.0)
+        ix = xc + radius * math.cos(split_angle)
+        iy = yc + radius * math.sin(split_angle)
+        cr.arc(ix, iy, 10, 0, 2*math.pi)
+        cr.fill()
+        
+        # Knob border
+        cr.set_source_rgba(0.0, 0.0, 0.0, 0.2)
+        cr.set_line_width(2)
+        cr.arc(ix, iy, 10, 0, 2*math.pi)
+        cr.stroke()
 
 class ArctisManagerWindow(Adw.ApplicationWindow):
     def __init__(self, **kwargs):
@@ -117,7 +167,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
 
         return card
 
-    def make_dual_progress_card(self, title, lbl1, val1, lbl2, val2):
+    def make_mix_dial_card(self, title, chat_val):
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         card.add_css_class("card")
 
@@ -131,27 +181,27 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         lbl_title.set_halign(Gtk.Align.START)
         inner.append(lbl_title)
 
-        def make_row(l_text, v):
-            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-            lbl = Gtk.Label(label=l_text)
-            lbl.set_size_request(60, -1)
-            lbl.set_halign(Gtk.Align.START)
-            bar = Gtk.ProgressBar()
-            bar.set_fraction(v / 100.0)
-            bar.set_hexpand(True)
-            bar.set_valign(Gtk.Align.CENTER)
-            val_lbl = Gtk.Label(label=f"{int(v)}%")
-            val_lbl.set_size_request(40, -1)
-            val_lbl.set_halign(Gtk.Align.END)
-            val_lbl.add_css_class("numeric")
-            val_lbl.add_css_class("dim-label")
-            row.append(lbl)
-            row.append(bar)
-            row.append(val_lbl)
-            return row
-
-        inner.append(make_row(lbl1, val1))
-        inner.append(make_row(lbl2, val2))
+        dial_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        
+        lbl_game = Gtk.Label(label="Game")
+        lbl_game.add_css_class("dim-label")
+        lbl_game.set_valign(Gtk.Align.END)
+        lbl_game.set_margin_bottom(12)
+        
+        dial = MixDialWidget()
+        dial.set_mix(chat_val)
+        dial.set_hexpand(True)
+        
+        lbl_chat = Gtk.Label(label="Chat")
+        lbl_chat.add_css_class("dim-label")
+        lbl_chat.set_valign(Gtk.Align.END)
+        lbl_chat.set_margin_bottom(12)
+        
+        dial_box.append(lbl_game)
+        dial_box.append(dial)
+        dial_box.append(lbl_chat)
+        
+        inner.append(dial_box)
         return card
 
     def on_status_received(self, status: dict):
@@ -189,9 +239,9 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             val = float(batt_o['value'])
             is_charging = charging_o and charging_o['value'] == 'on'
             
-            icon = "battery-good-charging-symbolic" if is_charging else "battery-good-symbolic"
-            if not is_charging and val <= 20: icon = "battery-empty-symbolic"
-            elif not is_charging and val <= 50: icon = "battery-low-symbolic"
+            icon = "battery-level-100-charging-symbolic" if is_charging else "battery-level-100-symbolic"
+            if not is_charging and val <= 20: icon = "battery-level-20-symbolic"
+            elif not is_charging and val <= 50: icon = "battery-level-50-symbolic"
             
             txt = f"{int(val)}%" + (" ⚡" if is_charging else "")
             batt_card = self.make_value_card("Battery", txt, icon, "title-1")
@@ -213,7 +263,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         chat_o = flat_status.get('chat_mix')
         media_o = flat_status.get('media_mix')
         if chat_o and media_o:
-            mix_card = self.make_dual_progress_card("Audio Mix", "Chat", float(chat_o['value']), "Media", float(media_o['value']))
+            mix_card = self.make_mix_dial_card("Audio Mix", float(chat_o['value']))
             self.dash_grid.attach(mix_card, 0, row_idx, 2, 1)
             row_idx += 1
 
@@ -221,7 +271,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         mic_o = flat_status.get('mic_status')
         if mic_o:
             is_muted = mic_o['value'] == 'muted'
-            icon = "microphone-sensitivity-muted-symbolic" if is_muted else "audio-input-microphone-symbolic"
+            icon = "audio-input-microphone-muted-symbolic" if is_muted else "audio-input-microphone-symbolic"
             txt = "Muted" if is_muted else "Active"
             mic_card = self.make_value_card("Microphone", txt, icon, "title-3" if is_muted else "title-2")
             self.dash_grid.attach(mic_card, 0, row_idx, 2, 1)
