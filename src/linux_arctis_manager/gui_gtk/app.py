@@ -30,11 +30,13 @@ class MixDialWidget(Gtk.DrawingArea):
         cr.set_antialias(cairo.ANTIALIAS_BEST)
         
         xc = width / 2.0
-        yc = height * 0.80
-        radius = min(width/2.0, height * 0.75) - 14
+        yc = height * 0.85
+        # Decrease radius and raise center slightly to give the knob breathing room so it doesn't clip the bounding box
+        radius = min(width/2.0, height * 0.80) - 20
         
-        start_angle = math.pi * 0.85
-        end_angle = math.pi * 2.15
+        # Bring the angles up slightly so it forms more of an arc and less of a full circle
+        start_angle = math.pi * 0.90
+        end_angle = math.pi * 2.10
         
         # 1. Draw Media Background Arc (Purple/Blue-ish)
         cr.set_source_rgba(0.53, 0.35, 0.96, 1.0)
@@ -195,23 +197,39 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
 
         dial_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         
+        # Normalized values
+        # chat_val is 0 to 100. 
+        # Game is 100 at chat_val=0, 50 at chat_val=50, 0 at chat_val=100.
+        game_perc = int(100 - chat_val)
+        chat_perc = int(chat_val)
+        
+        game_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        game_box.set_valign(Gtk.Align.END)
+        game_box.set_margin_bottom(12)
         lbl_game = Gtk.Label(label="Game")
         lbl_game.add_css_class("dim-label")
-        lbl_game.set_valign(Gtk.Align.END)
-        lbl_game.set_margin_bottom(12)
+        lbl_game_v = Gtk.Label(label=f"{game_perc}%")
+        lbl_game_v.add_css_class("numeric")
+        game_box.append(lbl_game)
+        game_box.append(lbl_game_v)
         
         dial = MixDialWidget()
         dial.set_mix(chat_val)
         dial.set_hexpand(True)
         
+        chat_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        chat_box.set_valign(Gtk.Align.END)
+        chat_box.set_margin_bottom(12)
         lbl_chat = Gtk.Label(label="Chat")
         lbl_chat.add_css_class("dim-label")
-        lbl_chat.set_valign(Gtk.Align.END)
-        lbl_chat.set_margin_bottom(12)
+        lbl_chat_v = Gtk.Label(label=f"{chat_perc}%")
+        lbl_chat_v.add_css_class("numeric")
+        chat_box.append(lbl_chat)
+        chat_box.append(lbl_chat_v)
         
-        dial_box.append(lbl_game)
+        dial_box.append(game_box)
         dial_box.append(dial)
-        dial_box.append(lbl_chat)
+        dial_box.append(chat_box)
         
         inner.append(dial_box)
         return card
@@ -224,9 +242,19 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         while child := self.dash_grid.get_first_child():
             self.dash_grid.remove(child)
 
-        if not status:
-            self.hero.set_title(I18n.translate('ui', 'app_name'))
-            self.hero.set_description(I18n.translate('ui', 'no_device_detected'))
+        flat_status = {}
+        for cat, obj in status.items():
+            for k, v in obj.items():
+                flat_status[k] = v
+
+        power_val = flat_status.get('headset_power_status', {}).get('value', 'offline')
+
+        # If it's completely empty OR it's offline (like a dongle is plugged in but headset is off), hide the cards
+        if not status or power_val == 'offline':
+            # We don't overwrite the title if we know what device it is, but if we don't, fall back to app_name
+            if not status:
+                self.hero.set_title(I18n.translate('ui', 'app_name'))
+            self.hero.set_description("Offline" if power_val == 'offline' else I18n.translate('ui', 'no_device_detected'))
             self.dash_clamp.set_visible(False)
             self.settings_page.set_visible(False)
             return
@@ -234,18 +262,10 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         self.dash_clamp.set_visible(True)
         self.settings_page.set_visible(True)
 
-        flat_status = {}
-        for cat, obj in status.items():
-            for k, v in obj.items():
-                flat_status[k] = v
-
-        power_val = flat_status.get('headset_power_status', {}).get('value', 'offline')
         if power_val == 'online':
             self.hero.set_description("Connected and Active")
         elif power_val == 'charging':
             self.hero.set_description("Charging (Offline)")
-        else:
-            self.hero.set_description("Offline")
 
         # Grid layout logic
         row_idx = 0
