@@ -14,9 +14,21 @@ from linux_arctis_manager.systemd import ensure_systemd_unit
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument('--systray', action='store_true', help='Run systray app, instead of opening the main window')
-    parser.add_argument('--verbose', '-v', action='count', default=0, help='Increase verbosity (up to -vvvv)')
-    parser.add_argument('--no-enforce-systemd', action='store_true', help='Do not enforce systemd unit')
+    parser.add_argument(
+        "--systray",
+        action="store_true",
+        help="Run systray app, instead of opening the main window",
+    )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="count",
+        default=0,
+        help="Increase verbosity (up to -vvvv)",
+    )
+    parser.add_argument(
+        "--no-enforce-systemd", action="store_true", help="Do not enforce systemd unit"
+    )
     args = parser.parse_args()
 
     log_level = logging.CRITICAL
@@ -25,9 +37,15 @@ def main():
     if log_level < logging.DEBUG:
         log_level = logging.DEBUG
 
-    logging.basicConfig(level=log_level, format='%(name)20s %(levelname)8s | %(message)s')
+    logging.basicConfig(
+        level=log_level, format="%(name)20s %(levelname)8s | %(message)s"
+    )
 
     app = QApplication(sys.argv)
+    app.setApplicationName("lam-gui")
+    app.setOrganizationDomain("dev.ingham")
+    app.setDesktopFileName("dev.ingham.lam-gui.qt")
+
     q_object = None
     if args.systray:
         q_object = QSystrayApp(app, log_level)
@@ -35,7 +53,7 @@ def main():
     else:
         q_object = QMainApp(app, log_level)
         app.setQuitOnLastWindowClosed(True)
-    
+
     if not args.no_enforce_systemd:
         ensure_systemd_unit(True)
 
@@ -58,5 +76,6 @@ def main():
     if q_object:
         asyncio.run(q_object.start())
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

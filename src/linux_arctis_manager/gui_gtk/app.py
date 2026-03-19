@@ -510,7 +510,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
 
 class ArctisManagerApp(Adw.Application):
     def __init__(self):
-        super().__init__(application_id="com.github.arctismanager")
+        super().__init__(application_id="dev.ingham.lam-gui.gtk")
 
     def do_activate(self):
         win = self.props.active_window
