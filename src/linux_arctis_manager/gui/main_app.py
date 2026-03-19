@@ -3,7 +3,7 @@ from typing import Literal
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import (QApplication, QHBoxLayout, QLabel, QListWidget,
+from PySide6.QtWidgets import (QApplication, QScrollArea, QFrame, QHBoxLayout, QLabel, QListWidget,
                                QListWidgetItem, QVBoxLayout, QWidget)
 
 from linux_arctis_manager.gui.base_app import QBaseDesktopApp
@@ -110,11 +110,16 @@ class QMainApp(QBaseDesktopApp):
         main_layout.addWidget(self.side_panel)
 
         # MAIN PANEL
+        self.main_panel_container = QScrollArea()
+        self.main_panel_container.setWidgetResizable(True)
+        self.main_panel_container.setFrameShape(QFrame.Shape.NoFrame)
+
         self.main_panel = QWidget()
         self.main_panel_layout = QVBoxLayout()
         self.main_panel.setLayout(self.main_panel_layout)
 
-        main_layout.addWidget(self.main_panel)
+        self.main_panel_container.setWidget(self.main_panel)
+        main_layout.addWidget(self.main_panel_container)
 
         return window
     
