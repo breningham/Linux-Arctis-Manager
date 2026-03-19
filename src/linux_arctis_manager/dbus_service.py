@@ -94,8 +94,10 @@ class ArctisManagerDbusSettingsService(ServiceInterface):
 
         if device_config and device_settings:
             settings.update({'device': device_settings.settings})
+            settings['device_name'] = device_config.name
         if device_config and device_settings:
             settings.update({'device': device_settings.settings})
+            settings['device_name'] = device_config.name
             settings['settings_config'].update({
                 config.name: config.to_dict()
                 for config in list(itertools.chain.from_iterable(

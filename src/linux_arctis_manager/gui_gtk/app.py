@@ -25,40 +25,52 @@ class MixDialWidget(Gtk.DrawingArea):
         self.queue_draw()
 
     def on_draw(self, area, cr, width, height):
+        # Enable anti-aliasing for smooth rounded edges
+        import cairo
+        cr.set_antialias(cairo.ANTIALIAS_BEST)
+        
         xc = width / 2.0
-        yc = height * 0.85
-        radius = min(width/2.0, height * 0.75) - 12
+        yc = height * 0.80
+        radius = min(width/2.0, height * 0.75) - 14
         
         start_angle = math.pi * 0.85
         end_angle = math.pi * 2.15
         
-        # 1. Draw Media Background Arc (Purple)
-        cr.set_source_rgba(0.5, 0.2, 0.8, 1.0)
-        cr.set_line_width(12)
-        cr.set_line_cap(1) # ROUND
+        # 1. Draw Media Background Arc (Purple/Blue-ish)
+        cr.set_source_rgba(0.53, 0.35, 0.96, 1.0)
+        cr.set_line_width(16)
+        cr.set_line_cap(cairo.LineCap.ROUND)
         cr.arc(xc, yc, radius, start_angle, end_angle)
         cr.stroke()
 
-        # 2. Draw Chat Overlay Arc (Green)
+        # 2. Draw Chat Overlay Arc (Green/Teal-ish)
         split_angle = start_angle + (self.mix_value / 100.0) * (end_angle - start_angle)
+        
         if split_angle > start_angle:
-            cr.set_source_rgba(0.2, 0.8, 0.4, 1.0)
-            cr.set_line_width(12)
-            cr.set_line_cap(1)
+            cr.set_source_rgba(0.18, 0.8, 0.44, 1.0)
+            cr.set_line_width(16)
+            cr.set_line_cap(cairo.LineCap.ROUND)
             cr.arc(xc, yc, radius, start_angle, split_angle)
             cr.stroke()
 
         # 3. Draw the Knob indicator
-        cr.set_source_rgba(1.0, 1.0, 1.0, 1.0)
         ix = xc + radius * math.cos(split_angle)
         iy = yc + radius * math.sin(split_angle)
-        cr.arc(ix, iy, 10, 0, 2*math.pi)
+        
+        # Knob Drop Shadow
+        cr.set_source_rgba(0.0, 0.0, 0.0, 0.15)
+        cr.arc(ix, iy + 2, 12, 0, 2*math.pi)
         cr.fill()
         
-        # Knob border
-        cr.set_source_rgba(0.0, 0.0, 0.0, 0.2)
-        cr.set_line_width(2)
-        cr.arc(ix, iy, 10, 0, 2*math.pi)
+        # Knob Body
+        cr.set_source_rgba(1.0, 1.0, 1.0, 1.0)
+        cr.arc(ix, iy, 12, 0, 2*math.pi)
+        cr.fill()
+        
+        # Knob Border
+        cr.set_source_rgba(0.85, 0.85, 0.85, 1.0)
+        cr.set_line_width(1.5)
+        cr.arc(ix, iy, 12, 0, 2*math.pi)
         cr.stroke()
 
 class ArctisManagerWindow(Adw.ApplicationWindow):
@@ -213,8 +225,14 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             self.dash_grid.remove(child)
 
         if not status:
+            self.hero.set_title(I18n.translate('ui', 'app_name'))
             self.hero.set_description(I18n.translate('ui', 'no_device_detected'))
+            self.dash_clamp.set_visible(False)
+            self.settings_page.set_visible(False)
             return
+            
+        self.dash_clamp.set_visible(True)
+        self.settings_page.set_visible(True)
 
         flat_status = {}
         for cat, obj in status.items():
@@ -279,6 +297,10 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
     def on_settings_received(self, new_settings: dict):
         if new_settings == self._settings_data:
             return
+            
+        dev_name = new_settings.get('device_name')
+        if dev_name:
+            self.hero.set_title(dev_name)
             
         settings_config = new_settings.get('settings_config', {})
         for config_name, kwargs in settings_config.items():
