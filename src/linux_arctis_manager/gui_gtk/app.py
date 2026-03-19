@@ -158,7 +158,13 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         if self._settings_data:
             self.refresh_settings_ui()
 
-    def make_value_card(self, title, value_text, icon_name, css_class="title-1"):
+    def make_value_card(
+        self,
+        title: str,
+        value_text: str,
+        icon_name: str,
+        css_classes: str | list[str] = "title-1",
+    ):
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         card.add_css_class("card")
 
@@ -181,13 +187,13 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         inner.append(top_box)
 
         lbl_val = Gtk.Label(label=value_text)
-        lbl_val.add_css_class(css_class)
+        if isinstance(css_classes, str):
+            lbl_val.add_css_class(css_classes)
+        else:
+            for cls in css_classes:
+                lbl_val.add_css_class(cls)
         lbl_val.add_css_class("numeric")
-        lbl_val.set_halign(Gtk.Align.CENTER)
-        lbl_val.set_valign(Gtk.Align.CENTER)
-        lbl_val.set_vexpand(True)
         inner.append(lbl_val)
-
         return card
 
     def make_mix_dial_card(self, title, chat_val):
@@ -220,6 +226,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         lbl_game = Gtk.Label(label="Game")
         lbl_game.add_css_class("dim-label")
         lbl_game_v = Gtk.Label(label=f"{game_perc}%")
+        lbl_game_v.add_css_class("title-2")
         lbl_game_v.add_css_class("numeric")
         game_box.append(lbl_game)
         game_box.append(lbl_game_v)
@@ -234,6 +241,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         lbl_chat = Gtk.Label(label="Chat")
         lbl_chat.add_css_class("dim-label")
         lbl_chat_v = Gtk.Label(label=f"{chat_perc}%")
+        lbl_chat_v.add_css_class("title-2")
         lbl_chat_v.add_css_class("numeric")
         chat_box.append(lbl_chat)
         chat_box.append(lbl_chat_v)
@@ -321,9 +329,8 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                 else "bluetooth-disabled-symbolic"
             )
             txt = "Connected" if is_bt_conn else "Disconnected"
-            bt_card = self.make_value_card(
-                "Bluetooth", txt, icon, "title-2" if is_bt_conn else "title-3"
-            )
+            css_cls = ["title-2", "success"] if is_bt_conn else ["title-2", "error"]
+            bt_card = self.make_value_card("Bluetooth", txt, icon, css_cls)
             self.dash_grid.attach(bt_card, 1, row_idx, 1, 1)
 
         if batt_o or bt_o:
@@ -347,9 +354,8 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                 else "audio-input-microphone-symbolic"
             )
             txt = "Muted" if is_muted else "Active"
-            mic_card = self.make_value_card(
-                "Microphone", txt, icon, "title-3" if is_muted else "title-2"
-            )
+            css_cls = ["title-2", "error"] if is_muted else ["title-2", "success"]
+            mic_card = self.make_value_card("Microphone", txt, icon, css_cls)
             self.dash_grid.attach(mic_card, 0, row_idx, 2, 1)
 
     def on_settings_received(self, new_settings: dict):
@@ -423,41 +429,111 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                     group.add(row)
 
                 elif stype == "slider":
-                    row = Adw.ActionRow(title=title, subtitle=desc)
+                    if name in [
+                        "mic_side_tone",
+                        "mic_mute_led_brightness",
+                        "bluetooth_auto_mute",
+                    ]:
+                        mappings = cfg.get("values_mapping", {})
+                        opts = []
+                        for k in sorted(mappings.keys(), key=lambda x: int(x)):
+                            opts.append(
+                                {
+                                    "id": int(k),
+                                    "name": I18n.translate(
+                                        "settings_values", mappings[k]
+                                    ),
+                                }
+                            )
 
-                    box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-                    scale = Gtk.Scale.new_with_range(
-                        Gtk.Orientation.HORIZONTAL,
-                        cfg.get("min", 0),
-                        cfg.get("max", 100),
-                        cfg.get("step", 1),
-                    )
-                    scale.set_value(float(value))
-                    scale.set_hexpand(True)
+                        model = Gtk.StringList.new([o["name"] for o in opts])
+                        row = Adw.ComboRow(title=title, subtitle=desc, model=model)
 
-                    val_lbl = Gtk.Label(label=str(value))
+                        idx = next(
+                            (i for i, o in enumerate(opts) if o["id"] == value), 0
+                        )
+                        row.set_selected(idx)
 
-                    def on_scale_change(sc, n=name, c=cfg, l=val_lbl):
-                        v = int(sc.get_value())
-                        mapped = c.get("values_mapping", {}).get(str(v), str(v))
-                        trans = I18n.translate("settings_values", mapped)
-                        l.set_label(trans)
-                        if not self._updating_ui:
+                        def on_combo_mapped_change(cr, pspec, n=name, o=opts):
+                            if self._updating_ui:
+                                return
+                            i = cr.get_selected()
+                            self.dbus_client.change_setting(n, o[i]["id"])
+
+                        row.connect("notify::selected", on_combo_mapped_change)
+                        group.add(row)
+
+                    elif name == "pm_shutdown":
+                        row = Adw.SpinRow(title=title, subtitle=desc)
+                        adj = Gtk.Adjustment(
+                            value=float(value),
+                            lower=cfg.get("min", 0),
+                            upper=cfg.get("max", 120),
+                            step_increment=cfg.get("step", 1),
+                        )
+                        row.set_adjustment(adj)
+
+                        def on_spin_change(sr, n=name):
+                            if self._updating_ui:
+                                return
+                            v = int(sr.get_value())
                             self.dbus_client.change_setting(n, v)
 
-                    scale.connect("value-changed", on_scale_change)
-                    on_scale_change(scale)  # Init label
+                        row.connect("changed", on_spin_change)
+                        group.add(row)
 
-                    # Ensure all labels take up the same width so the sliders align perfectly
-                    val_lbl.set_xalign(1.0)
-                    label_size_group.add_widget(val_lbl)
+                    else:
+                        row = Adw.ActionRow(title=title, subtitle=desc)
 
-                    box.append(scale)
-                    box.append(val_lbl)
+                        box = Gtk.Box(
+                            orientation=Gtk.Orientation.HORIZONTAL, spacing=10
+                        )
 
-                    row.add_suffix(box)
-                    box.set_size_request(250, -1)
-                    group.add(row)
+                        if name == "mic_volume":
+                            icon = Gtk.Image.new_from_icon_name(
+                                "audio-input-microphone-symbolic"
+                            )
+                            icon.add_css_class("dim-label")
+                            box.append(icon)
+
+                        scale = Gtk.Scale.new_with_range(
+                            Gtk.Orientation.HORIZONTAL,
+                            cfg.get("min", 0),
+                            cfg.get("max", 100),
+                            cfg.get("step", 1),
+                        )
+                        scale.set_value(float(value))
+                        scale.set_hexpand(True)
+                        scale.set_margin_start(8)
+                        scale.set_margin_end(8)
+
+                        val_lbl = Gtk.Label(label=str(value))
+
+                        def on_scale_change(sc, n=name, c=cfg, l=val_lbl):
+                            v = int(sc.get_value())
+                            mapped = c.get("values_mapping", {}).get(str(v), str(v))
+                            trans = I18n.translate("settings_values", mapped)
+                            l.set_label(trans)
+                            if not self._updating_ui:
+                                self.dbus_client.change_setting(n, v)
+
+                        scale.connect("value-changed", on_scale_change)
+                        on_scale_change(scale)
+
+                        val_lbl.set_xalign(1.0)
+                        label_size_group.add_widget(val_lbl)
+
+                        box.append(scale)
+                        box.append(val_lbl)
+
+                        row.add_suffix(box)
+
+                        if name == "mic_volume":
+                            row.set_activatable_widget(scale)
+                        else:
+                            box.set_size_request(250, -1)
+
+                        group.add(row)
 
                 elif stype == "select":
                     source = cfg.get("options_source")
