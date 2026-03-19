@@ -157,6 +157,7 @@ device:
     cable_charging:
       type: int_str_mapping
       values:
+        0x00: disconnected
         0x01: on
         0x03: off
     media_mix:
