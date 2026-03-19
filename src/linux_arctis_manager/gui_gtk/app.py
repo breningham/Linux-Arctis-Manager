@@ -381,6 +381,8 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
 
         settings_config = self._settings_data.get("settings_config", {})
 
+        label_size_group = Gtk.SizeGroup(mode=Gtk.SizeGroupMode.HORIZONTAL)
+
         for section in ["general", "device"]:
             if section == "device" and self._is_offline:
                 continue
@@ -446,11 +448,15 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                     scale.connect("value-changed", on_scale_change)
                     on_scale_change(scale)  # Init label
 
+                    # Ensure all labels take up the same width so the sliders align perfectly
+                    val_lbl.set_xalign(1.0)
+                    label_size_group.add_widget(val_lbl)
+
                     box.append(scale)
                     box.append(val_lbl)
 
                     row.add_suffix(box)
-                    box.set_size_request(200, -1)
+                    box.set_size_request(250, -1)
                     group.add(row)
 
                 elif stype == "select":
