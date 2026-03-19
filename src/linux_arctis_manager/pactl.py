@@ -152,14 +152,17 @@ class PulseAudioManager:
             self.pulse.volume_set_all_chans(chat, chat_mix / 100)
 
     def sinks_setup(self, device_name: str, vendor_id: int, product_id: int|list[int]|None):
-        real_sink = self.get_arctis_sinks(ONLY_PHYSICAL, vendor_id=vendor_id, product_id=product_id)
+        real_sinks = self.get_arctis_sinks(ONLY_PHYSICAL, vendor_id=vendor_id, product_id=product_id)
 
-        if not real_sink:
+        if not real_sinks:
             self.logger.warning('No SteelSeries Arctis sink found.')
             return
         
-        self.create_virtual_sink(PULSE_MEDIA_NODE_NAME, f'{device_name} Media', real_sink[0].name)
-        self.create_virtual_sink(PULSE_CHAT_NODE_NAME, f'{device_name} Chat', real_sink[0].name)
+        # Prioritize analog-stereo
+        real_sink = next((s for s in real_sinks if 'analog-stereo' in s.name), real_sinks[0])
+        
+        self.create_virtual_sink(PULSE_MEDIA_NODE_NAME, f'{device_name} Media', real_sink.name)
+        self.create_virtual_sink(PULSE_CHAT_NODE_NAME, f'{device_name} Chat', real_sink.name)
 
     def sinks_teardown(self):
         self.logger.info('Removing virtual sinks...')

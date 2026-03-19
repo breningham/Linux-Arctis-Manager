@@ -25,8 +25,8 @@ def on_off(value: int, on: int, off: int) -> Literal['on', 'off']:
 
 @status_type("int_str_mapping")
 def int_str_mapping(values: dict[int, str], value: int) -> str|None:
-    return values.get(value, None)
+    return values.get(value, f'unknown_0x{value:02x}')
 
 @status_type("int_int_mapping")
 def int_int_mapping(values: dict[int, int], value: int) -> int|None:
-    return values.get(value, None)
+    return values.get(value, f'unknown_0x{value:02x}')

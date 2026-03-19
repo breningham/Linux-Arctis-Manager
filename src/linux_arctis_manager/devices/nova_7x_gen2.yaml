@@ -1,19 +1,16 @@
 device:
-  name: SteelSeries Arctis Nova 7 # (% battery)
+  name: SteelSeries Arctis Nova 7X Gen 2
   vendor_id: 0x1038
   product_ids:
-    - 0x2202 # Arctis Nova 7
-    - 0x2206 # Arctis Nova 7x
-    - 0x223a # Arctis Nova 7 Diablo IV
-    - 0x227a # Arctis Nova 7 WoW Edition
-    - 0x22a4 # Arctis Nova 7X
+    - 0x229e # Arctis Nova 7x Gen 2
   command_padding:
     length: 64
     position: end
     filler: 0x00
 
   command_interface_index: [0, 3] # bInterfaceNumber, bAlternateSetting
-  listen_interface_indexes: [3] # bInterfaceNumber
+  command_report_id: 0x00
+  listen_interface_indexes: [3, 5] # Listen to both in case async b9 03 arrives on 5
 
   device_init:
     - [0x10]  # ???
@@ -25,9 +22,7 @@ device:
     - [0x37, 'settings.mic_volume']                 # Mic Level (00 - 07)
     - [0xb3, 'settings.bluetooth_auto_mute']        # Bluetooth Call Mute (Off=00 - Mute=02)
     - [0x39, 'settings.mic_side_tone']              # SideTones (Off=00 - Max=03)
-    - [0x09] # ???
     - ['status.request']                            # Status Request
-    - [0x09] # ???
   status:
     request: 0xb0
     response_mapping:
@@ -46,6 +41,9 @@ device:
         bluetooth_power_status: 0x07
         bluetooth_auto_mute: 0x08
         mic_status: 0x09
+      
+      - starts_with: 0xb9
+        headset_power_status: 0x01
 
     representation:
       headset:
@@ -82,7 +80,10 @@ device:
         default: 0x00 # off
         update_sequence: [0x3a, 'value']
       bluetooth_auto_mute:
-        type: discrete_map
+        type: slider
+        min: 0x00
+        max: 0x02
+        step: 1
         values_mapping:
           0x00: none
           0x01: -12_db
@@ -106,10 +107,24 @@ device:
         step: 1
         min_label: mic_muted
         max_label: perc_100
+        values_mapping:
+          0x00: mic_0
+          0x01: mic_1
+          0x02: mic_2
+          0x03: mic_3
+          0x04: mic_4
+          0x05: mic_5
+          0x06: mic_6
+          0x07: mic_7
         default: 0x07 # 100%
         update_sequence: [0x37, 'value']
       mic_side_tone:
-        type: discrete_map
+        type: slider
+        min: 0x00
+        max: 0x03
+        step: 1
+        min_label: off
+        max_label: high
         values_mapping:
           0x00: off
           0x01: low
@@ -118,7 +133,10 @@ device:
         default: 0x00 # off
         update_sequence: [0x39, 'value']
       mic_mute_led_brightness:
-        type: discrete_map
+        type: slider
+        min: 0x00
+        max: 0x03
+        step: 1
         values_mapping:
           0x00: off
           0x01: low
@@ -128,18 +146,13 @@ device:
         update_sequence: [0xae, 'value']
     power_management:
       pm_shutdown:
-        type: discrete_map
+        type: slider
+        min: 0x00
+        max: 0x5a
+        step: 1
         values_mapping:
           0x00: never
-          0x01: 1_minute
-          0x05: 5_minutes
-          0x0a: 10_minutes
-          0x0f: 15_minutes
-          0x1e: 30_minutes
-          0x2d: 45_minutes
-          0x3c: 60_minutes
-          0x4b: 75_minutes
-          0x5a: 90_minutes  
+        value_suffix: Minutes
         default: 0x1e # 30 minutes
         update_sequence: [0xa3, 'value']
 
@@ -153,7 +166,7 @@ device:
     headset_battery_charge:
       type: percentage
       perc_min: 0
-      perc_max: 4
+      perc_max: 128
     cable_charging:
       type: int_str_mapping
       values:
@@ -173,6 +186,7 @@ device:
         0x00: off
         0x02: connected
         0x03: disconnected
+        0x04: connected
     bluetooth_power_status:
       type: on_off
       off: 0x01

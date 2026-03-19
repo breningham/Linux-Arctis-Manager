@@ -121,33 +121,91 @@ class QSettingsWidget(QWidget):
 
         widget: QWidget|None = None
         if config.type == SettingType.TOGGLE:
-            widget = QDualState(
+            widget = QWidget()
+            widget_layout = QVBoxLayout()
+            widget_layout.setContentsMargins(0, 5, 0, 15)
+            widget.setLayout(widget_layout)
+
+            label_text = I18n.get_instance().translate('settings', config.name)
+            title_label = QLabel(label_text)
+            title_font = title_label.font()
+            title_font.setBold(True)
+            title_label.setFont(title_font)
+            widget_layout.addWidget(title_label)
+            
+            desc_text = I18n.get_instance().translate('settings_descriptions', config.name)
+            if desc_text != config.name:
+                desc_label = QLabel(desc_text)
+                desc_label.setWordWrap(True)
+                desc_label.setStyleSheet("color: gray; font-size: 11px;")
+                widget_layout.addWidget(desc_label)
+
+            toggle_widget = QDualState(
                 off_text=I18n.get_instance().translate('settings_values', config.values.get('off_label', 'off')),
                 on_text=I18n.get_instance().translate('settings_values', config.values.get('on_label', 'on')),
                 init_state='right' if value == config.values.get('on') else 'left',
             )
-            widget.checkStateChanged.connect(lambda state: callback(config, state == Qt.CheckState.Checked))
+            toggle_widget.checkStateChanged.connect(lambda state: callback(config, state == Qt.CheckState.Checked))
+            
+            widget_layout.addWidget(toggle_widget)
         elif config.type == SettingType.SLIDER:
             widget = QWidget()
-            widget_layout = QHBoxLayout()
+            widget_layout = QVBoxLayout()
+            widget_layout.setContentsMargins(0, 5, 0, 15)
             widget.setLayout(widget_layout)
+
+            label_text = I18n.get_instance().translate('settings', config.name)
+            title_label = QLabel(label_text)
+            title_font = title_label.font()
+            title_font.setBold(True)
+            title_label.setFont(title_font)
+            widget_layout.addWidget(title_label)
+            
+            desc_text = I18n.get_instance().translate('settings_descriptions', config.name)
+            if desc_text != config.name:
+                desc_label = QLabel(desc_text)
+                desc_label.setWordWrap(True)
+                desc_label.setStyleSheet("color: gray; font-size: 11px;")
+                widget_layout.addWidget(desc_label)
+
+            slider_row = QWidget()
+            slider_row_layout = QHBoxLayout()
+            slider_row_layout.setContentsMargins(0, 5, 0, 0)
+            slider_row.setLayout(slider_row_layout)
 
             slider = QSlider(Qt.Orientation.Horizontal)
             slider.setMinimum(config.min)
             slider.setMaximum(config.max)
             slider.setSingleStep(config.step)
             slider.setValue(int(float(value)))
-            widget_layout.addWidget(slider)
+            slider_row_layout.addWidget(slider)
 
-            def slider_value_callback(config: ConfigSetting) -> Callable[[bool|str|int], str]:
+            def slider_value_callback(config: ConfigSetting):
                 def get_slider_value(value: bool|str|int) -> str:
-                    return self._values_mapping_label(config, value)
+                    mapped_val = config.get_kwargs().get('values_mapping', {}).get(value)
+                    if mapped_val is None:
+                        mapped_val = config.get_kwargs().get('values_mapping', {}).get(f'{value}', value)
+                    
+                    translated = I18n.get_instance().translate('settings_values', mapped_val)
+                    
+                    if str(translated) == str(value):
+                        suffix = config.get_kwargs().get('value_suffix', '')
+                        if suffix:
+                            return f"{translated} {suffix}"
+                            
+                    return translated
 
                 return get_slider_value
 
             slider_value = slider_value_callback(config)
-            widget_value_label = QLabel(self._values_mapping_label(config, value))
-            widget_layout.addWidget(widget_value_label)
+            
+            widget_value_label = QLabel(slider_value(value))
+            widget_value_label.setMinimumWidth(80)
+            widget_value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            slider_row_layout.addWidget(widget_value_label)
+            
+            widget_layout.addWidget(slider_row)
+
 
             slider.valueChanged.connect(lambda value: widget_value_label.setText(slider_value(value)))
             slider.valueChanged.connect(lambda value: callback(config, value))
@@ -172,6 +230,9 @@ class QSettingsWidget(QWidget):
             widget = QLabel(f'UNKNOWN TYPE: {config.type}')
 
         if widget:
+            if config.type in [SettingType.SLIDER, SettingType.TOGGLE]:
+                return widget
+            
             main_layout.addWidget(QLabel(I18n.get_instance().translate('settings', config.name)))
             main_layout.addWidget(widget)
         

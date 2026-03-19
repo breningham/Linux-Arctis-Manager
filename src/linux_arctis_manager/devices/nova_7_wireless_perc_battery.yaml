@@ -5,7 +5,6 @@ device:
     - 0x22a1 # Arctis Nova 7
     - 0x227e # Arctis Nova 7 Wireless Gen 2
     - 0x2258 # Arctis Nova 7x v2
-    - 0x229e # Arctis Nova 7x v2
     - 0x22a9 # Arctis Nova 7 Diablo IV
     - 0x22a5 # Arctis Nova 7X
   command_padding:
@@ -146,9 +145,11 @@ device:
 
   status_parse:
     headset_power_status:
-      type: on_off
-      off: 0x02
-      on: 0x03
+      type: int_str_mapping
+      values:
+        0x01: charging
+        0x02: offline
+        0x03: online
     headset_battery_charge:
       type: percentage
       perc_min: 0
