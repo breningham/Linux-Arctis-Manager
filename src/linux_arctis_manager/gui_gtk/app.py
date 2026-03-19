@@ -55,6 +55,8 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         self._status_data = {}
         self._option_lists = {}
         self._updating_ui = False
+        self._status_rows = []
+        self._settings_groups = []
         
         self.status_group = Adw.PreferencesGroup(title="Status")
         self.device_page.add(self.status_group)
@@ -77,13 +79,15 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             return
         self._status_data = status
         
-        # Clear existing status
-        while self.status_group.get_first_child() is not None:
-            self.status_group.remove(self.status_group.get_first_child())
+        # Clear existing status rows
+        for row in self._status_rows:
+            self.status_group.remove(row)
+        self._status_rows.clear()
 
         if not status:
             row = Adw.ActionRow(title=I18n.translate('ui', 'no_device_detected'))
             self.status_group.add(row)
+            self._status_rows.append(row)
             return
 
         for category, status_obj in status.items():
@@ -117,6 +121,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                     row.add_suffix(lbl)
                 
                 self.status_group.add(row)
+                self._status_rows.append(row)
 
     def on_settings_received(self, new_settings: dict):
         if new_settings == self._settings_data:
@@ -137,15 +142,15 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         self._updating_ui = True
         
         # Clear pages (except status group on device page)
-        while self.general_page.get_first_child() is not None:
-            self.general_page.remove(self.general_page.get_first_child())
-            
-        child = self.device_page.get_first_child()
-        while child is not None:
-            next_child = child.get_next_sibling()
-            if child != self.status_group:
-                self.device_page.remove(child)
-            child = next_child
+        for group in self._settings_groups:
+            if group in self.general_page:
+                self.general_page.remove(group)
+            else:
+                try:
+                    self.device_page.remove(group)
+                except Exception:
+                    pass
+        self._settings_groups.clear()
 
         settings_config = self._settings_data.get('settings_config', {})
         
@@ -160,6 +165,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                 self.general_page.add(group)
             else:
                 self.device_page.add(group)
+            self._settings_groups.append(group)
                 
             for name, value in settings_group.items():
                 cfg = settings_config.get(name, {})
