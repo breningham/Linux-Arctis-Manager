@@ -20,6 +20,7 @@ ColumnLayout {
         }
 
         Loader {
+            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
             sourceComponent: {
                 if (modelData.id === "pm_shutdown") return spinComp;
                 if (modelData.type === "slider") return sliderComp;
@@ -27,9 +28,6 @@ ColumnLayout {
                 if (modelData.type === "discrete_map" || modelData.type === "select") return comboComp;
                 return defaultComp;
             }
-            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-        }
-            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
         }
     }
 
@@ -43,14 +41,13 @@ ColumnLayout {
         opacity: 0.8
     }
 
-
     Component {
         id: spinComp
         RowLayout {
             Controls.SpinBox {
-                from: modelData.min
-                to: modelData.max
-                stepSize: modelData.step
+                from: modelData.min !== undefined ? modelData.min : 0
+                to: modelData.max !== undefined ? modelData.max : 120
+                stepSize: modelData.step !== undefined ? modelData.step : 1
                 value: modelData.value
                 onValueModified: backend.changeSetting(modelData.id, value)
             }
@@ -60,15 +57,16 @@ ColumnLayout {
             }
         }
     }
+
     Component {
         id: sliderComp
         RowLayout {
             Controls.Slider {
                 id: ctrlSlider
                 Layout.preferredWidth: 200
-                from: modelData.min
-                to: modelData.max
-                stepSize: modelData.step
+                from: modelData.min !== undefined ? modelData.min : 0
+                to: modelData.max !== undefined ? modelData.max : 100
+                stepSize: modelData.step !== undefined ? modelData.step : 1
                 value: modelData.value
                 onMoved: {
                     backend.changeSetting(modelData.id, value)
