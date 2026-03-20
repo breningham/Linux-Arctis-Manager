@@ -17,23 +17,32 @@ logger = logging.getLogger("GtkApp")
 class HeroBox(Gtk.Box):
     def __init__(self):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=24)
+        # We clamp it internally or use hexpand=False with halign=CENTER so it doesn't restrict parent
         self.set_halign(Gtk.Align.CENTER)
+        self.set_hexpand(True)
         self.set_margin_top(48)
         self.set_margin_bottom(48)
 
+        # Left Column: Icon (spanning 2 rows effectively via vertical centering)
         self.icon = Gtk.Image.new_from_icon_name("audio-headset-symbolic")
         self.icon.set_pixel_size(96)
-        self.icon.add_css_class("dim-label")
         
+        # Right Column: Title and Description Box
         self.text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         self.text_box.set_valign(Gtk.Align.CENTER)
+        self.text_box.set_hexpand(True)
         
         self.title_label = Gtk.Label()
         self.title_label.add_css_class("title-1")
+        self.title_label.set_wrap(True)
+        self.title_label.set_justify(Gtk.Justification.START)
+        self.title_label.set_halign(Gtk.Align.START)
         
         self.desc_label = Gtk.Label()
         self.desc_label.add_css_class("body")
-        self.desc_label.add_css_class("dim-label")
+        self.desc_label.set_wrap(True)
+        self.desc_label.set_justify(Gtk.Justification.START)
+        self.desc_label.set_halign(Gtk.Align.START)
         
         self.text_box.append(self.title_label)
         self.text_box.append(self.desc_label)
@@ -41,24 +50,40 @@ class HeroBox(Gtk.Box):
         self.append(self.icon)
         self.append(self.text_box)
         
-        self._is_online = False
+        self._state = "disconnected" # "online", "offline", "disconnected"
         self._update_layout()
         
-    def set_state(self, is_online):
-        if self._is_online != is_online:
-            self._is_online = is_online
+    def set_state(self, state):
+        if self._state != state:
+            self._state = state
             self._update_layout()
             
     def _update_layout(self):
-        if self._is_online:
+        if self._state == "online":
             self.icon.set_visible(True)
+            self.icon.remove_css_class("dim-label")
+            self.icon.set_from_icon_name("audio-headset-symbolic")
             self.desc_label.set_visible(True)
+            self.desc_label.remove_css_class("dim-label")
             self.title_label.set_halign(Gtk.Align.START)
             self.desc_label.set_halign(Gtk.Align.START)
-        else:
+            self.title_label.set_justify(Gtk.Justification.START)
+            
+        elif self._state == "offline":
+            self.icon.set_visible(True)
+            self.icon.add_css_class("dim-label")
+            self.icon.set_from_icon_name("bluetooth-disconnected-symbolic") # Alternative icon for disconnected
+            self.desc_label.set_visible(True)
+            self.desc_label.add_css_class("dim-label")
+            self.title_label.set_halign(Gtk.Align.START)
+            self.desc_label.set_halign(Gtk.Align.START)
+            self.title_label.set_justify(Gtk.Justification.START)
+            
+        else: # disconnected
             self.icon.set_visible(False)
             self.desc_label.set_visible(False)
             self.title_label.set_halign(Gtk.Align.CENTER)
+            self.title_label.set_justify(Gtk.Justification.CENTER)
             
     def set_title(self, text):
         self.title_label.set_label(text)
@@ -172,18 +197,20 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
 
         self._is_offline = not status or power_val == "offline"
 
+        dev_name = self._settings_data.get("device_name", I18n.translate("ui", "app_name"))
+
         # If it's completely empty OR it's offline (like a dongle is plugged in but headset is off), hide the cards
         if self._is_offline:
-            self.hero.set_state(False)
-            # If no device connected at all
+            # If no device connected at all (State 3)
             if not status:
+                self.hero.set_state("disconnected")
                 self.hero.set_title(I18n.translate("ui", "no_device_detected"))
             else:
-                # Connected but turned off
-                if power_val == "offline":
-                    self.hero.set_title(I18n.translate("ui", "app_name") + " (Offline)")
-                else:
-                    self.hero.set_title(I18n.translate("ui", "no_device_detected"))
+                # Connected but turned off (State 2)
+                self.hero.set_state("offline")
+                self.hero.set_title(dev_name)
+                self.hero.set_description("Offline")
+                
             self.dash_clamp.set_visible(False)
 
             # Make sure settings tab remains visible but without device settings
@@ -203,7 +230,10 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         self.dash_clamp.set_visible(True)
         self.settings_page.set_visible(True)
 
-        self.hero.set_state(True)
+        dev_name = self._settings_data.get("device_name", I18n.translate("ui", "app_name"))
+        self.hero.set_state("online")
+        self.hero.set_title(dev_name)
+        
         if power_val == "online":
             self.hero.set_description("Connected and Active")
         elif power_val == "charging":
@@ -375,7 +405,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             return
 
         dev_name = new_settings.get("device_name")
-        if dev_name:
+        if dev_name and self.hero._state != "disconnected":
             self.hero.set_title(dev_name)
 
         settings_config = new_settings.get("settings_config", {})
