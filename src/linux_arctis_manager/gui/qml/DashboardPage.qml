@@ -5,10 +5,13 @@ import org.kde.kirigami as Kirigami
 
 Kirigami.ScrollablePage {
     title: "Status"
+    leftPadding: Kirigami.Units.largeSpacing
+    rightPadding: Kirigami.Units.largeSpacing
+    topPadding: Kirigami.Units.largeSpacing
+    bottomPadding: Kirigami.Units.largeSpacing
 
     ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: Kirigami.Units.largeSpacing
+        width: parent.width
         spacing: Kirigami.Units.largeSpacing * 2
 
         // HERO BANNER
