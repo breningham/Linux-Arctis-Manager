@@ -28,9 +28,10 @@ Kirigami.ApplicationWindow {
                     ListElement { text: "Status"; icon: "audio-card"; page: "dashboard" }
                     ListElement { text: "Settings"; icon: "preferences-system"; page: "settings" }
                 }
-                delegate: Kirigami.BasicListItem {
+                delegate: Controls.ItemDelegate {
+                    width: ListView.view.width - (Kirigami.Units.smallSpacing * 2)
                     text: model.text
-                    icon: model.icon
+                    icon.name: model.icon
                     highlighted: ListView.isCurrentItem
                     onClicked: {
                         ListView.view.currentIndex = index
