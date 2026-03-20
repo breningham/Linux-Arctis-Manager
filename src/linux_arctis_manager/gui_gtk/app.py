@@ -54,11 +54,19 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         self.dash_clamp.set_maximum_size(600)
         dash_vbox.append(self.dash_clamp)
 
+        self.dash_vbox_inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24)
+        self.dash_vbox_inner.set_margin_start(16)
+        self.dash_vbox_inner.set_margin_end(16)
+        self.dash_vbox_inner.set_margin_bottom(32)
+
         self.dash_group = Adw.PreferencesGroup()
-        self.dash_group.set_margin_start(16)
-        self.dash_group.set_margin_end(16)
-        self.dash_group.set_margin_bottom(32)
-        self.dash_clamp.set_child(self.dash_group)
+        self.mix_group = Adw.PreferencesGroup()
+        self.mix_group.set_title("Audio Mix")
+        
+        self.dash_vbox_inner.append(self.dash_group)
+        self.dash_vbox_inner.append(self.mix_group)
+        
+        self.dash_clamp.set_child(self.dash_vbox_inner)
 
         # --- TAB 2: Settings ---
         self.settings_page = Adw.PreferencesPage()
@@ -79,6 +87,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         self._updating_ui = False
         self._dash_widgets = {}
         self._dash_rows = []
+        self._mix_rows = []
         self._is_offline = True
 
         self.dbus_client.start()
@@ -128,6 +137,9 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             for row in self._dash_rows:
                 self.dash_group.remove(row)
             self._dash_rows.clear()
+            for row in self._mix_rows:
+                self.mix_group.remove(row)
+            self._mix_rows.clear()
             return
 
         self.dash_clamp.set_visible(True)
@@ -158,6 +170,9 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             for row in self._dash_rows:
                 self.dash_group.remove(row)
             self._dash_rows.clear()
+            for row in self._mix_rows:
+                self.mix_group.remove(row)
+            self._mix_rows.clear()
                 
             if "battery" in expected_cards:
                 row = Adw.ActionRow(title="Battery")
@@ -198,12 +213,15 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                 self._dash_widgets["bluetooth"] = {"row": row, "icon": icon, "label": lbl}
                 
             if "mix" in expected_cards:
-                row = Adw.ActionRow(title="Audio Mix")
-                icon = Gtk.Image.new_from_icon_name("audio-volume-high-symbolic")
-                row.add_prefix(icon)
+                self.mix_group.set_visible(True)
+                row = Adw.ActionRow()
                 
                 box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
                 box.set_valign(Gtk.Align.CENTER)
+                box.set_margin_top(12)
+                box.set_margin_bottom(12)
+                box.set_margin_start(16)
+                box.set_margin_end(16)
                 
                 icon_game = Gtk.Image.new_from_icon_name("input-gaming-symbolic")
                 icon_game.add_css_class("dim-label")
@@ -214,7 +232,6 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                 scale.set_draw_value(False)
                 scale.set_has_origin(False)
                 scale.add_mark(50, Gtk.PositionType.BOTTOM, None)
-                scale.set_size_request(200, -1)
                 
                 def on_scale_change(sc, sc_type, val):
                     return True
@@ -225,10 +242,13 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                 icon_chat.add_css_class("dim-label")
                 box.append(icon_chat)
                 
-                row.add_suffix(box)
-                self.dash_group.add(row)
-                self._dash_rows.append(row)
+                row.set_child(box)
+                
+                self.mix_group.add(row)
+                self._mix_rows.append(row)
                 self._dash_widgets["mix"] = {"row": row, "scale": scale}
+            else:
+                self.mix_group.set_visible(False)
                 
             if "mic" in expected_cards:
                 row = Adw.ActionRow(title="Microphone")
