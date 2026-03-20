@@ -124,9 +124,9 @@ class ArctisBackend(QObject):
             }
             
             if stype == "slider":
-                item["min"] = cfg.get("range", {}).get("min", 0)
-                item["max"] = cfg.get("range", {}).get("max", 100)
-                item["step"] = cfg.get("range", {}).get("step", 1)
+                item["min"] = cfg.get("min", 0)
+                item["max"] = cfg.get("max", 100)
+                item["step"] = cfg.get("step", 1)
             elif stype == "discrete_map":
                 options = []
                 values_map = cfg.get("values_mapping", {})

@@ -21,11 +21,14 @@ ColumnLayout {
 
         Loader {
             sourceComponent: {
+                if (modelData.id === "pm_shutdown") return spinComp;
                 if (modelData.type === "slider") return sliderComp;
                 if (modelData.type === "toggle") return toggleComp;
                 if (modelData.type === "discrete_map" || modelData.type === "select") return comboComp;
                 return defaultComp;
             }
+            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+        }
             Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
         }
     }
@@ -40,6 +43,23 @@ ColumnLayout {
         opacity: 0.8
     }
 
+
+    Component {
+        id: spinComp
+        RowLayout {
+            Controls.SpinBox {
+                from: modelData.min
+                to: modelData.max
+                stepSize: modelData.step
+                value: modelData.value
+                onValueModified: backend.changeSetting(modelData.id, value)
+            }
+            Controls.Label {
+                text: "minutes"
+                visible: modelData.id === "pm_shutdown"
+            }
+        }
+    }
     Component {
         id: sliderComp
         RowLayout {
@@ -58,7 +78,7 @@ ColumnLayout {
                 text: {
                     let v = Math.round(ctrlSlider.value);
                     if (modelData.id === "mic_volume") {
-                        let mx = modelData.max > 0 ? modelData.max : 100;
+                        let mx = modelData.max > 0 ? modelData.max : 10;
                         return Math.round((v / mx) * 100) + "%";
                     }
                     return v;
