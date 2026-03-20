@@ -5,8 +5,8 @@ import org.kde.kirigami as Kirigami
 
 Kirigami.ApplicationWindow {
     id: root
-    width: 650
-    height: 800
+    width: 900
+    height: 650
     visible: true
     title: backend.deviceName !== "" ? backend.deviceName : "Arctis Manager"
 

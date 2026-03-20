@@ -11,23 +11,34 @@ Kirigami.ScrollablePage {
         anchors.margins: Kirigami.Units.largeSpacing
         spacing: Kirigami.Units.largeSpacing
 
-        Kirigami.FormLayout {
+        Kirigami.Card {
             Layout.fillWidth: true
+            header: Controls.Label {
+                text: "General"
+                font.bold: true
+                padding: Kirigami.Units.largeSpacing
+            }
+            contentItem: Kirigami.FormLayout {
+                Repeater {
+                    model: backend.generalSettings
+                    delegate: SettingsDelegate {}
+                }
+            }
+        }
 
-            Kirigami.Separator { Kirigami.FormData.isSection: true; Kirigami.FormData.label: "General" }
-            Repeater {
-                model: backend.generalSettings
-                delegate: SettingsDelegate {}
+        Kirigami.Card {
+            Layout.fillWidth: true
+            visible: !backend.isOffline && backend.deviceSettings.length > 0
+            header: Controls.Label {
+                text: "Device"
+                font.bold: true
+                padding: Kirigami.Units.largeSpacing
             }
-            
-            Kirigami.Separator { 
-                Kirigami.FormData.isSection: true; 
-                Kirigami.FormData.label: "Device"; 
-                visible: !backend.isOffline && backend.deviceSettings.length > 0 
-            }
-            Repeater {
-                model: backend.deviceSettings
-                delegate: SettingsDelegate {}
+            contentItem: Kirigami.FormLayout {
+                Repeater {
+                    model: backend.deviceSettings
+                    delegate: SettingsDelegate {}
+                }
             }
         }
         

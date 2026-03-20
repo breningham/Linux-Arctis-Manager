@@ -32,8 +32,13 @@ class ArctisBackend(QObject):
     def _on_status(self, status: dict):
         if status == self._status:
             return
+            
+        was_offline = self.isOffline
         self._status = status
         self.stateChanged.emit()
+        
+        if was_offline != self.isOffline:
+            self.settingsChanged.emit()
         
     def _on_settings(self, settings: dict):
         if settings == self._settings:
@@ -150,6 +155,8 @@ class ArctisBackend(QObject):
         
     @Property('QVariantList', notify=settingsChanged)
     def deviceSettings(self) -> list:
+        if self.isOffline:
+            return []
         return self._format_settings_section("device")
 
     @Slot(str, 'QVariant')
