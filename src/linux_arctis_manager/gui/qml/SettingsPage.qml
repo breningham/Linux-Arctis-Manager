@@ -18,7 +18,8 @@ Kirigami.ScrollablePage {
                 font.bold: true
                 padding: Kirigami.Units.largeSpacing
             }
-            contentItem: Kirigami.FormLayout {
+            contentItem: ColumnLayout {
+                spacing: Kirigami.Units.largeSpacing * 1.5
                 Repeater {
                     model: backend.generalSettings
                     delegate: SettingsDelegate {}
@@ -34,7 +35,8 @@ Kirigami.ScrollablePage {
                 font.bold: true
                 padding: Kirigami.Units.largeSpacing
             }
-            contentItem: Kirigami.FormLayout {
+            contentItem: ColumnLayout {
+                spacing: Kirigami.Units.largeSpacing * 1.5
                 Repeater {
                     model: backend.deviceSettings
                     delegate: SettingsDelegate {}

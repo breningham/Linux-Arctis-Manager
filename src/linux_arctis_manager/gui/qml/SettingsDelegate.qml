@@ -3,43 +3,48 @@ import QtQuick.Controls as Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
-Item {
-    // Remove fixed implicitWidth so FormLayout can constraint it properly
+ColumnLayout {
     Layout.fillWidth: true
-    implicitHeight: layout.implicitHeight
-    Kirigami.FormData.label: modelData.title
+    spacing: Kirigami.Units.smallSpacing
 
-    ColumnLayout {
-        id: layout
-        anchors.left: parent.left
-        anchors.right: parent.right
-        spacing: Kirigami.Units.smallSpacing
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: Kirigami.Units.largeSpacing
+
+        Controls.Label {
+            text: modelData.title
+            Layout.fillWidth: true
+            elide: Text.ElideRight
+            font.bold: true
+            font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.1
+        }
 
         Loader {
-            Layout.fillWidth: true
             sourceComponent: {
                 if (modelData.type === "slider") return sliderComp;
                 if (modelData.type === "toggle") return toggleComp;
                 if (modelData.type === "discrete_map" || modelData.type === "select") return comboComp;
                 return defaultComp;
             }
+            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
         }
-        
-        Controls.Label {
-            Layout.fillWidth: true
-            text: modelData.description
-            color: Kirigami.Theme.disabledTextColor
-            font.pointSize: Kirigami.Theme.smallFont.pointSize
-            wrapMode: Text.WordWrap
-            visible: text !== ""
-        }
+    }
+
+    Controls.Label {
+        Layout.fillWidth: true
+        text: modelData.description
+        color: Kirigami.Theme.disabledTextColor
+        font.pointSize: Kirigami.Theme.smallFont.pointSize
+        wrapMode: Text.WordWrap
+        visible: text !== ""
     }
 
     Component {
         id: sliderComp
         RowLayout {
             Controls.Slider {
-                Layout.fillWidth: true
+                id: ctrlSlider
+                Layout.preferredWidth: 200
                 from: modelData.min
                 to: modelData.max
                 stepSize: modelData.step
@@ -49,7 +54,7 @@ Item {
                 }
             }
             Controls.Label {
-                text: parent.children[0].value
+                text: ctrlSlider.value
                 Layout.minimumWidth: Kirigami.Units.gridUnit * 2
                 horizontalAlignment: Text.AlignRight
             }
@@ -67,9 +72,8 @@ Item {
     Component {
         id: comboComp
         Controls.ComboBox {
-            // This is crucial: force it to respect parent boundaries
-            Layout.fillWidth: true
-            Layout.maximumWidth: parent ? parent.width : 300
+            Layout.preferredWidth: 250
+            Layout.maximumWidth: 350
             
             textRole: "label"
             valueRole: "value"
