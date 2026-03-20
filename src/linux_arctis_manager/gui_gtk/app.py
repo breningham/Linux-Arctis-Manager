@@ -80,6 +80,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         self._status_data = {}
         self._option_lists = {}
         self._updating_ui = False
+        self._dash_widgets = {}
         self._is_offline = True
 
         self.dbus_client.start()
@@ -130,7 +131,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                 lbl_val.add_css_class(cls)
         lbl_val.add_css_class("numeric")
         inner.append(lbl_val)
-        return card
+        return card, icon, lbl_val
 
     def make_mix_dial_card(self, title, chat_val):
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -171,15 +172,12 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         dial_box.append(icon_chat)
 
         inner.append(dial_box)
-        return card
+        return card, scale
 
     def on_status_received(self, status: dict):
         if status == self._status_data:
             return
         self._status_data = status
-
-        while child := self.dash_grid.get_first_child():
-            self.dash_grid.remove(child)
 
         flat_status = {}
         for cat, obj in status.items():
@@ -205,6 +203,11 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             # Make sure settings tab remains visible but without device settings
             self.settings_page.set_visible(True)
             self.refresh_settings_ui()
+            
+            # Clear widgets dict so they get recreated next time it comes online
+            self._dash_widgets.clear()
+            while child := self.dash_grid.get_first_child():
+                self.dash_grid.remove(child)
             return
 
         self.dash_clamp.set_visible(True)
@@ -215,68 +218,87 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         elif power_val == "charging":
             self.hero.set_description("Charging (Offline)")
 
-        # Grid layout logic
-        row_idx = 0
-
-        # Battery & Bluetooth row
+        # Determine which cards should exist
         batt_o = flat_status.get("headset_battery_charge")
         charging_o = flat_status.get("cable_charging")
-        if batt_o:
-            val = float(batt_o["value"])
-            is_charging = charging_o and charging_o["value"] == "on"
-
-            icon = (
-                "battery-level-100-charged-symbolic"
-                if is_charging
-                else "battery-level-100-symbolic"
-            )
-            if not is_charging and val <= 20:
-                icon = "battery-level-20-symbolic"
-            elif not is_charging and val <= 50:
-                icon = "battery-level-50-symbolic"
-
-            txt = f"{int(val)}%" + (" ⚡" if is_charging else "")
-            batt_card = self.make_value_card("Battery", txt, icon, "title-1")
-            self.dash_grid.attach(batt_card, 0, row_idx, 1, 1)
-
         bt_o = flat_status.get("bluetooth_connection")
-        if bt_o:
-            bt_val = bt_o["value"]
-            is_bt_conn = bt_val == "connected"
-            icon = (
-                "bluetooth-active-symbolic"
-                if is_bt_conn
-                else "bluetooth-disabled-symbolic"
-            )
-            txt = "Connected" if is_bt_conn else "Disconnected"
-            css_cls = ["title-2", "success"] if is_bt_conn else ["title-2", "error"]
-            bt_card = self.make_value_card("Bluetooth", txt, icon, css_cls)
-            self.dash_grid.attach(bt_card, 1, row_idx, 1, 1)
-
-        if batt_o or bt_o:
-            row_idx += 1
-
-        # Mixes
         chat_o = flat_status.get("chat_mix")
         media_o = flat_status.get("media_mix")
-        if chat_o and media_o:
-            mix_card = self.make_mix_dial_card("Audio Mix", float(chat_o["value"]))
-            self.dash_grid.attach(mix_card, 0, row_idx, 2, 1)
-            row_idx += 1
-
-        # Mic
         mic_o = flat_status.get("mic_status")
-        if mic_o:
+        
+        expected_cards = set()
+        if batt_o: expected_cards.add("battery")
+        if bt_o: expected_cards.add("bluetooth")
+        if chat_o and media_o: expected_cards.add("mix")
+        if mic_o: expected_cards.add("mic")
+        
+        # If the expected cards changed, clear and rebuild layout
+        if set(self._dash_widgets.keys()) != expected_cards:
+            self._dash_widgets.clear()
+            while child := self.dash_grid.get_first_child():
+                self.dash_grid.remove(child)
+                
+            row_idx = 0
+            if "battery" in expected_cards:
+                card, icon, lbl = self.make_value_card("Battery", "", "battery-level-100-symbolic", "title-1")
+                self.dash_grid.attach(card, 0, row_idx, 1, 1)
+                self._dash_widgets["battery"] = {"card": card, "icon": icon, "label": lbl}
+            if "bluetooth" in expected_cards:
+                card, icon, lbl = self.make_value_card("Bluetooth", "", "bluetooth-active-symbolic", "title-2")
+                self.dash_grid.attach(card, 1, row_idx, 1, 1)
+                self._dash_widgets["bluetooth"] = {"card": card, "icon": icon, "label": lbl}
+                
+            if "battery" in expected_cards or "bluetooth" in expected_cards:
+                row_idx += 1
+                
+            if "mix" in expected_cards:
+                card, scale = self.make_mix_dial_card("Audio Mix", 50.0)
+                self.dash_grid.attach(card, 0, row_idx, 2, 1)
+                self._dash_widgets["mix"] = {"card": card, "scale": scale}
+                row_idx += 1
+                
+            if "mic" in expected_cards:
+                card, icon, lbl = self.make_value_card("Microphone", "", "audio-input-microphone-symbolic", "title-2")
+                self.dash_grid.attach(card, 0, row_idx, 2, 1)
+                self._dash_widgets["mic"] = {"card": card, "icon": icon, "label": lbl}
+                
+        # Now update the existing widgets
+        if "battery" in expected_cards:
+            w = self._dash_widgets["battery"]
+            val = float(batt_o["value"])
+            is_charging = charging_o and charging_o["value"] == "on"
+            icon_name = "battery-level-100-charged-symbolic" if is_charging else "battery-level-100-symbolic"
+            if not is_charging and val <= 20: icon_name = "battery-level-20-symbolic"
+            elif not is_charging and val <= 50: icon_name = "battery-level-50-symbolic"
+            
+            w["icon"].set_from_icon_name(icon_name)
+            w["label"].set_label(f"{int(val)}%" + (" ⚡" if is_charging else ""))
+            
+        if "bluetooth" in expected_cards:
+            w = self._dash_widgets["bluetooth"]
+            is_bt_conn = bt_o["value"] == "connected"
+            icon_name = "bluetooth-active-symbolic" if is_bt_conn else "bluetooth-disabled-symbolic"
+            txt = "Connected" if is_bt_conn else "Disconnected"
+            css_cls = ["title-2", "success"] if is_bt_conn else ["title-2", "error"]
+            
+            w["icon"].set_from_icon_name(icon_name)
+            w["label"].set_label(txt)
+            w["label"].set_css_classes(css_cls + ["numeric"])
+            
+        if "mix" in expected_cards:
+            w = self._dash_widgets["mix"]
+            w["scale"].set_value(float(chat_o["value"]))
+            
+        if "mic" in expected_cards:
+            w = self._dash_widgets["mic"]
             is_muted = mic_o["value"] == "muted"
-            icon = (
-                "microphone-sensitivity-muted-symbolic"
-                if is_muted
-                else "audio-input-microphone-symbolic"
-            )
+            icon_name = "microphone-sensitivity-muted-symbolic" if is_muted else "audio-input-microphone-symbolic"
             txt = "Muted" if is_muted else "Active"
             css_cls = ["title-2", "error"] if is_muted else ["title-2", "success"]
-            mic_card = self.make_value_card("Microphone", txt, icon, css_cls)
-            self.dash_grid.attach(mic_card, 0, row_idx, 2, 1)
+            
+            w["icon"].set_from_icon_name(icon_name)
+            w["label"].set_label(txt)
+            w["label"].set_css_classes(css_cls + ["numeric"])
 
     def on_settings_received(self, new_settings: dict):
         if new_settings == self._settings_data:
@@ -508,6 +530,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                     group.add(row)
 
         self._updating_ui = False
+        self._dash_widgets = {}
 
 
 class ArctisManagerApp(Adw.Application):
