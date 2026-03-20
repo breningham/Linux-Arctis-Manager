@@ -5,7 +5,7 @@ import math
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Gtk, Adw, GLib
+from gi.repository import Gtk, Adw, GLib, GObject
 
 from linux_arctis_manager.i18n import I18n
 from linux_arctis_manager.gui_gtk.dbus_client import GtkDbusClient
@@ -16,33 +16,30 @@ logger = logging.getLogger("GtkApp")
 
 class HeroBox(Gtk.Box):
     def __init__(self):
-        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=24)
-        # We clamp it internally or use hexpand=False with halign=CENTER so it doesn't restrict parent
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=16)
         self.set_halign(Gtk.Align.CENTER)
         self.set_hexpand(True)
         self.set_margin_top(48)
         self.set_margin_bottom(48)
 
-        # Left Column: Icon (spanning 2 rows effectively via vertical centering)
         self.icon = Gtk.Image.new_from_icon_name("audio-headset-symbolic")
         self.icon.set_pixel_size(96)
+        self.icon.set_halign(Gtk.Align.CENTER)
         
-        # Right Column: Title and Description Box
         self.text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        self.text_box.set_valign(Gtk.Align.CENTER)
-        self.text_box.set_hexpand(True)
+        self.text_box.set_halign(Gtk.Align.CENTER)
         
         self.title_label = Gtk.Label()
         self.title_label.add_css_class("title-1")
         self.title_label.set_wrap(True)
-        self.title_label.set_justify(Gtk.Justification.LEFT)
-        self.title_label.set_halign(Gtk.Align.START)
+        self.title_label.set_justify(Gtk.Justification.CENTER)
+        self.title_label.set_halign(Gtk.Align.CENTER)
         
         self.desc_label = Gtk.Label()
         self.desc_label.add_css_class("body")
         self.desc_label.set_wrap(True)
-        self.desc_label.set_justify(Gtk.Justification.LEFT)
-        self.desc_label.set_halign(Gtk.Align.START)
+        self.desc_label.set_justify(Gtk.Justification.CENTER)
+        self.desc_label.set_halign(Gtk.Align.CENTER)
         
         self.text_box.append(self.title_label)
         self.text_box.append(self.desc_label)
@@ -65,9 +62,9 @@ class HeroBox(Gtk.Box):
             self.icon.set_from_icon_name("audio-headset-symbolic")
             self.desc_label.set_visible(True)
             self.desc_label.remove_css_class("dim-label")
-            self.title_label.set_halign(Gtk.Align.START)
-            self.desc_label.set_halign(Gtk.Align.START)
-            self.title_label.set_justify(Gtk.Justification.LEFT)
+            self.title_label.set_halign(Gtk.Align.CENTER)
+            self.desc_label.set_halign(Gtk.Align.CENTER)
+            self.title_label.set_justify(Gtk.Justification.CENTER)
             
         elif self._state == "offline":
             self.icon.set_visible(True)
@@ -75,9 +72,9 @@ class HeroBox(Gtk.Box):
             self.icon.set_from_icon_name("bluetooth-disconnected-symbolic") # Alternative icon for disconnected
             self.desc_label.set_visible(True)
             self.desc_label.add_css_class("dim-label")
-            self.title_label.set_halign(Gtk.Align.START)
-            self.desc_label.set_halign(Gtk.Align.START)
-            self.title_label.set_justify(Gtk.Justification.LEFT)
+            self.title_label.set_halign(Gtk.Align.CENTER)
+            self.desc_label.set_halign(Gtk.Align.CENTER)
+            self.title_label.set_justify(Gtk.Justification.CENTER)
             
         else: # disconnected
             self.icon.set_visible(False)
@@ -112,6 +109,19 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
 
         self.view_stack.set_vexpand(True)
         vbox.append(self.view_stack)
+        
+        # Bottom bar for narrow screens
+        switcher_bar = Adw.ViewSwitcherBar()
+        switcher_bar.set_stack(self.view_stack)
+        vbox.append(switcher_bar)
+        
+        # When title hides the switcher due to narrow width, reveal the bottom bar
+        switcher_title.bind_property(
+            "title-visible", 
+            switcher_bar, 
+            "reveal", 
+            GObject.BindingFlags.SYNC_CREATE
+        )
 
         # --- TAB 1: Dashboard ---
         self.dashboard_scroll = Gtk.ScrolledWindow()
