@@ -185,26 +185,29 @@ def write_desktop_entries(use_gtk: bool = False, use_qt: bool = False) -> int:
     # 2. write the desktop entries
     DESKTOP_WINDOW_PATH_QT.parent.mkdir(parents=True, exist_ok=True)
 
-    shutil.copyfile(
-        Path(__file__).parent.parent / "desktop" / "dev.ingham.lam-gui.qt.desktop",
-        DESKTOP_WINDOW_PATH_QT,
-    )
-    shutil.copyfile(
-        Path(__file__).parent.parent
-        / "desktop"
-        / "dev.ingham.lam-gui.qt.systray.desktop",
-        DESKTOP_SYSTRAY_PATH_QT,
-    )
-    shutil.copyfile(
-        Path(__file__).parent.parent / "desktop" / "dev.ingham.lam-gui.gtk.desktop",
-        DESKTOP_WINDOW_PATH_GTK,
-    )
-    shutil.copyfile(
-        Path(__file__).parent.parent
-        / "desktop"
-        / "dev.ingham.lam-gui.gtk.systray.desktop",
-        DESKTOP_SYSTRAY_PATH_GTK,
-    )
+    if use_qt:
+        shutil.copyfile(
+            Path(__file__).parent.parent / "desktop" / "dev.ingham.lam-gui.qt.desktop",
+            DESKTOP_WINDOW_PATH_QT,
+        )
+        shutil.copyfile(
+            Path(__file__).parent.parent
+            / "desktop"
+            / "dev.ingham.lam-gui.qt.systray.desktop",
+            DESKTOP_SYSTRAY_PATH_QT,
+        )
+
+    if use_gtk:
+        shutil.copyfile(
+            Path(__file__).parent.parent / "desktop" / "dev.ingham.lam-gui.gtk.desktop",
+            DESKTOP_WINDOW_PATH_GTK,
+        )
+        shutil.copyfile(
+            Path(__file__).parent.parent
+            / "desktop"
+            / "dev.ingham.lam-gui.gtk.systray.desktop",
+            DESKTOP_SYSTRAY_PATH_GTK,
+        )
 
     lam_gui = shutil.which("lam-gui")
     lam_gui_gtk = shutil.which("lam-gui-gtk")
