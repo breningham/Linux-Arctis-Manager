@@ -35,13 +35,13 @@ class HeroBox(Gtk.Box):
         self.title_label = Gtk.Label()
         self.title_label.add_css_class("title-1")
         self.title_label.set_wrap(True)
-        self.title_label.set_justify(Gtk.Justification.START)
+        self.title_label.set_justify(Gtk.Justification.LEFT)
         self.title_label.set_halign(Gtk.Align.START)
         
         self.desc_label = Gtk.Label()
         self.desc_label.add_css_class("body")
         self.desc_label.set_wrap(True)
-        self.desc_label.set_justify(Gtk.Justification.START)
+        self.desc_label.set_justify(Gtk.Justification.LEFT)
         self.desc_label.set_halign(Gtk.Align.START)
         
         self.text_box.append(self.title_label)
@@ -67,7 +67,7 @@ class HeroBox(Gtk.Box):
             self.desc_label.remove_css_class("dim-label")
             self.title_label.set_halign(Gtk.Align.START)
             self.desc_label.set_halign(Gtk.Align.START)
-            self.title_label.set_justify(Gtk.Justification.START)
+            self.title_label.set_justify(Gtk.Justification.LEFT)
             
         elif self._state == "offline":
             self.icon.set_visible(True)
@@ -77,7 +77,7 @@ class HeroBox(Gtk.Box):
             self.desc_label.add_css_class("dim-label")
             self.title_label.set_halign(Gtk.Align.START)
             self.desc_label.set_halign(Gtk.Align.START)
-            self.title_label.set_justify(Gtk.Justification.START)
+            self.title_label.set_justify(Gtk.Justification.LEFT)
             
         else: # disconnected
             self.icon.set_visible(False)
