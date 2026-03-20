@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Arctis Manager (GTK)
+Exec=/bin/sh -c 'exec lam-gui-gtk >/dev/null 2>&1'
+Icon=arctis-manager
+Type=Application
+Terminal=false
+Categories=Utility;Application;

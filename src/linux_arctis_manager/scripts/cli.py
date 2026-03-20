@@ -10,90 +10,100 @@ from ruamel.yaml import YAML
 
 from linux_arctis_manager.cli_tools import arctis_usb_info
 from linux_arctis_manager.config import DeviceConfiguration
-from linux_arctis_manager.constants import (DEVICES_CONFIG_FOLDER,
-                                            UDEV_RULES_PATHS)
+from linux_arctis_manager.constants import DEVICES_CONFIG_FOLDER, UDEV_RULES_PATHS
 from linux_arctis_manager.utils import project_version
 
 ConfigRuleset = NamedTuple(
-    'ConfigRuleset',
-    [
-        ('vendor_id', int),
-        ('product_ids', list[int]),
-        ('device_name', str)
-    ])
+    "ConfigRuleset",
+    [("vendor_id", int), ("product_ids", list[int]), ("device_name", str)],
+)
 
-ICONS_PATH = Path().home() / '.local' / 'share' / 'icons'
-ICON_PATH = ICONS_PATH / 'arctis-manager.svg'
+ICONS_PATH = Path().home() / ".local" / "share" / "icons"
+ICON_PATH = ICONS_PATH / "arctis-manager.svg"
 
-APPLICATIONS_PATH = Path().home() / '.local' / 'share' / 'applications'
-DESKTOP_WINDOW_PATH = APPLICATIONS_PATH / 'ArctisManager.desktop'
-DESKTOP_SYSTRAY_PATH = APPLICATIONS_PATH / 'ArctisManagerSystray.desktop'
+APPLICATIONS_PATH = Path().home() / ".local" / "share" / "applications"
+DESKTOP_WINDOW_PATH_QT = APPLICATIONS_PATH / "dev.ingham.lam-gui.qt.desktop"
+DESKTOP_SYSTRAY_PATH_QT = APPLICATIONS_PATH / "dev.ingham.lam-gui.qt.systray.desktop"
+DESKTOP_WINDOW_PATH_GTK = APPLICATIONS_PATH / "dev.ingham.lam-gui.gtk.desktop"
+DESKTOP_SYSTRAY_PATH_GTK = APPLICATIONS_PATH / "dev.ingham.lam-gui.gtk.systray.desktop"
+
 
 def sudo_it(command: list[str]) -> int:
-    pkexec = shutil.which('pkexec')
+    pkexec = shutil.which("pkexec")
     if not pkexec:
-        print('pkexec not found.')
+        print("pkexec not found.")
         return 250
 
     result = subprocess.run(["pkexec", *command], check=True)
 
     return result.returncode
 
-def write_udev_rules(rules_path: Path, create_directories: bool, force_write: bool) -> int:
+
+def write_udev_rules(
+    rules_path: Path, create_directories: bool, force_write: bool
+) -> int:
     run_with_sudo = False
 
-    print('Writing udev rules...')
+    print("Writing udev rules...")
 
     if rules_path.is_dir():
-        print(f'Cannot write to directory {rules_path}')
-        print('Please specify a file.')
+        print(f"Cannot write to directory {rules_path}")
+        print("Please specify a file.")
 
         return 1
-    
+
     if create_directories:
         rules_path.parent.mkdir(parents=True, exist_ok=True)
 
     if not rules_path.parent.exists():
-        print(f'Cannot write to {rules_path}')
-        print('Parent directory does not exist.')
+        print(f"Cannot write to {rules_path}")
+        print("Parent directory does not exist.")
 
         return 2
 
-    if rules_path.exists() and not os.access(rules_path, os.W_OK) \
-        or not rules_path.exists() and not os.access(rules_path.parent, os.W_OK):
-        print('')
+    if (
+        rules_path.exists()
+        and not os.access(rules_path, os.W_OK)
+        or not rules_path.exists()
+        and not os.access(rules_path.parent, os.W_OK)
+    ):
+        print("")
         print(f"User can't write to {rules_path}.")
-        print('Command will be executed with pkexec (root).')
-        print('')
-        input('Press Enter to continue...')
+        print("Command will be executed with pkexec (root).")
+        print("")
+        input("Press Enter to continue...")
 
         run_with_sudo = True
-    
+
     if not force_write and rules_path.exists():
-        print(f'File {rules_path} already exists.')
-        print('To overwrite add option --force.')
+        print(f"File {rules_path} already exists.")
+        print("To overwrite add option --force.")
 
         return 3
-    
-    yaml = YAML(typ='safe')
+
+    yaml = YAML(typ="safe")
     products: list[ConfigRuleset] = []
     for config_path in DEVICES_CONFIG_FOLDER:
-        for config_file in config_path.glob('*.yaml'):
+        for config_file in config_path.glob("*.yaml"):
             config_yaml = yaml.load(config_file)
 
             config = DeviceConfiguration(config_yaml)
-            products.append(ConfigRuleset(config.vendor_id, config.product_ids, config.name))
-    
+            products.append(
+                ConfigRuleset(config.vendor_id, config.product_ids, config.name)
+            )
+
     rule_template = 'SUBSYSTEM=="usb", ENV{{DEVTYPE}}=="usb_device", ATTRS{{idVendor}}=="{idVendor}", ATTRS{{idProduct}}=="{idProducts}", MODE="0666", TAG+="uaccess"'
     rules = []
     for ruleset in products:
         rule = rule_template.format(
-            idVendor=f'{ruleset.vendor_id:04x}',
-            idProducts='|'.join([f'{pid:04x}' for pid in ruleset.product_ids]) if len(ruleset.product_ids) > 1 else f'{ruleset.product_ids[0]:04x}'
+            idVendor=f"{ruleset.vendor_id:04x}",
+            idProducts="|".join([f"{pid:04x}" for pid in ruleset.product_ids])
+            if len(ruleset.product_ids) > 1
+            else f"{ruleset.product_ids[0]:04x}",
         )
-        rules.extend(['', f'# {ruleset.device_name}', rule])
-    
-    concat_rules = '\n'.join(rules)
+        rules.extend(["", f"# {ruleset.device_name}", rule])
+
+    concat_rules = "\n".join(rules)
     file_content = f'''# Generated by Arctis Manager via lam-cli udev write-rules
 
 ACTION=="remove", GOTO="local_end"
@@ -102,115 +112,200 @@ ACTION=="remove", GOTO="local_end"
 LABEL="local_end"'''
     if run_with_sudo:
         escaped_file_content = file_content.replace('"', '\\"')
-        command = ["sh", "-c", f"echo \"{escaped_file_content}\" > \"{rules_path}\""]
+        command = ["sh", "-c", f'echo "{escaped_file_content}" > "{rules_path}"']
         return sudo_it(command)
     else:
-        with rules_path.open('w') as f:
-            f.write(f'{file_content}\n')
-    
+        with rules_path.open("w") as f:
+            f.write(f"{file_content}\n")
+
     return 0
+
 
 def reload_udev_rules() -> int:
     run_with_sudo = False
     if os.geteuid() != 0:
         run_with_sudo = True
-    print('Reloading udev rules...')
+    print("Reloading udev rules...")
 
     commands = [
-        ('Reload Rules', ["udevadm", "control", "--reload-rules"]),
-        ('Trigger Rules', ["udevadm", "trigger", "--subsystem-match=usb"]),
+        ("Reload Rules", ["udevadm", "control", "--reload-rules"]),
+        ("Trigger Rules", ["udevadm", "trigger", "--subsystem-match=usb"]),
     ]
     result = 0
     for command in commands:
-        print(f'Phase: {command[0]}')
+        print(f"Phase: {command[0]}")
         if run_with_sudo:
             result = sudo_it(command[1])
             if result:
-                print('- Process failed!')
+                print("- Process failed!")
                 return result
         else:
             result = subprocess.run(command[1], check=True).returncode
             if result:
-                print('- Process failed!')
+                print("- Process failed!")
                 return result
 
     return result
 
-def write_desktop_entries() -> int:
-    print('Writing desktop entries...')
+
+def write_desktop_entries(use_gtk: bool = False, use_qt: bool = False) -> int:
+    print("Writing desktop entries...")
+
+    # If neither is specified, prompt the user
+    if not use_gtk and not use_qt:
+        print("\nWhich frontend would you like to install desktop entries for?")
+        print("1. Qt/Kirigami (Default)")
+        print("2. GTK4/Libadwaita")
+        print("3. Both")
+        choice = input("Enter choice [1-3] (default 1): ").strip()
+
+        if choice == "2":
+            use_gtk = True
+        elif choice == "3":
+            use_gtk = True
+            use_qt = True
+        else:
+            use_qt = True
 
     # 1. write the icon file
     ICONS_PATH.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(Path(__file__).parent.parent / 'gui' / 'images' / 'steelseries_logo.svg', ICON_PATH)
+    shutil.copyfile(
+        Path(__file__).parent.parent / "gui" / "images" / "steelseries_logo.svg",
+        ICON_PATH,
+    )
 
     # 2. write the desktop entries
-    DESKTOP_WINDOW_PATH.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(Path(__file__).parent.parent / 'desktop' / 'ArctisManager.desktop', DESKTOP_WINDOW_PATH)
-    shutil.copyfile(Path(__file__).parent.parent / 'desktop' / 'ArctisManagerSystray.desktop', DESKTOP_SYSTRAY_PATH)
+    DESKTOP_WINDOW_PATH_QT.parent.mkdir(parents=True, exist_ok=True)
 
-    lam_gui = shutil.which('lam-gui')
+    shutil.copyfile(
+        Path(__file__).parent.parent / "desktop" / "dev.ingham.lam-gui.qt.desktop",
+        DESKTOP_WINDOW_PATH_QT,
+    )
+    shutil.copyfile(
+        Path(__file__).parent.parent
+        / "desktop"
+        / "dev.ingham.lam-gui.qt.systray.desktop",
+        DESKTOP_SYSTRAY_PATH_QT,
+    )
+    shutil.copyfile(
+        Path(__file__).parent.parent / "desktop" / "dev.ingham.lam-gui.gtk.desktop",
+        DESKTOP_WINDOW_PATH_GTK,
+    )
+    shutil.copyfile(
+        Path(__file__).parent.parent
+        / "desktop"
+        / "dev.ingham.lam-gui.gtk.systray.desktop",
+        DESKTOP_SYSTRAY_PATH_GTK,
+    )
+
+    lam_gui = shutil.which("lam-gui")
+    lam_gui_gtk = shutil.which("lam-gui-gtk")
+
     if lam_gui:
-        DESKTOP_WINDOW_PATH.write_text(DESKTOP_WINDOW_PATH.read_text().replace('exec lam-gui', lam_gui))
-        DESKTOP_SYSTRAY_PATH.write_text(DESKTOP_SYSTRAY_PATH.read_text().replace('exec lam-gui', lam_gui))
+        DESKTOP_WINDOW_PATH_QT.write_text(
+            DESKTOP_WINDOW_PATH_QT.read_text().replace("exec lam-gui", lam_gui)
+        )
+        DESKTOP_SYSTRAY_PATH_QT.write_text(
+            DESKTOP_SYSTRAY_PATH_QT.read_text().replace("exec lam-gui", lam_gui)
+        )
 
-    DESKTOP_WINDOW_PATH.chmod(0o755)
-    DESKTOP_SYSTRAY_PATH.chmod(0o755)
+    if lam_gui_gtk:
+        DESKTOP_WINDOW_PATH_GTK.write_text(
+            DESKTOP_WINDOW_PATH_GTK.read_text().replace("exec lam-gui-gtk", lam_gui_gtk)
+        )
+        DESKTOP_SYSTRAY_PATH_GTK.write_text(
+            DESKTOP_SYSTRAY_PATH_GTK.read_text().replace(
+                "exec lam-gui-gtk", lam_gui_gtk
+            )
+        )
+
+    DESKTOP_WINDOW_PATH_QT.chmod(0o755)
+    DESKTOP_SYSTRAY_PATH_QT.chmod(0o755)
+    DESKTOP_WINDOW_PATH_GTK.chmod(0o755)
+    DESKTOP_SYSTRAY_PATH_GTK.chmod(0o755)
 
     return 0
 
+
 def remove_desktop_entries() -> int:
-    print('Removing desktop entries...')
+    print("Removing desktop entries...")
     if ICON_PATH.exists():
         ICON_PATH.unlink()
-    
-    if DESKTOP_WINDOW_PATH.exists():
-        DESKTOP_WINDOW_PATH.unlink()
-    
-    if DESKTOP_SYSTRAY_PATH.exists():
-        DESKTOP_SYSTRAY_PATH.unlink()
+
+    for path in [
+        DESKTOP_WINDOW_PATH_QT,
+        DESKTOP_SYSTRAY_PATH_QT,
+        DESKTOP_WINDOW_PATH_GTK,
+        DESKTOP_SYSTRAY_PATH_GTK,
+    ]:
+        if path.exists():
+            path.unlink()
 
     return 0
 
 
 def main():
-    parser = ArgumentParser(description=f'Arctis Manager CLI v {project_version()}')
-    subparsers = parser.add_subparsers(dest='command', required=True)
+    parser = ArgumentParser(description=f"Arctis Manager CLI v {project_version()}")
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
-    udev_parser = subparsers.add_parser('udev', help='UDEV rules')
-    udev_subparsers = udev_parser.add_subparsers(dest='action', required=True)
+    udev_parser = subparsers.add_parser("udev", help="UDEV rules")
+    udev_subparsers = udev_parser.add_subparsers(dest="action", required=True)
 
-    write_parser = udev_subparsers.add_parser('write-rules', help='Write the udev rules')
-    write_parser.add_argument('--rules-path', default=None, type=Path)
-    write_parser.add_argument('--create-directories', action='store_true')
-    write_parser.add_argument('--force', action='store_true')
-    write_parser.add_argument('--reload', action='store_true')
+    write_parser = udev_subparsers.add_parser(
+        "write-rules", help="Write the udev rules"
+    )
+    write_parser.add_argument("--rules-path", default=None, type=Path)
+    write_parser.add_argument("--create-directories", action="store_true")
+    write_parser.add_argument("--force", action="store_true")
+    write_parser.add_argument("--reload", action="store_true")
 
-    reload_parser = udev_subparsers.add_parser('reload-rules', help='Reload the udev rules')
+    reload_parser = udev_subparsers.add_parser(
+        "reload-rules", help="Reload the udev rules"
+    )
 
-    desktop_parser = subparsers.add_parser('desktop', help='Desktop entries management')
+    desktop_parser = subparsers.add_parser("desktop", help="Desktop entries management")
 
-    destkop_subparsers = desktop_parser.add_subparsers(dest='action', required=True)
-    destkop_subparsers.add_parser('write', help='Write the desktop entries')
-    destkop_subparsers.add_parser('remove', help='Remove the desktop entries')
+    destkop_subparsers = desktop_parser.add_subparsers(dest="action", required=True)
+    destkop_subparsers.add_parser("write", help="Write the desktop entries")
+    destkop_subparsers.add_parser("remove", help="Remove the desktop entries")
+
+    write_desktop_parser = destkop_subparsers.choices["write"]
+    write_desktop_parser.add_argument(
+        "--qt", action="store_true", help="Install Qt frontend desktop entry"
+    )
+    write_desktop_parser.add_argument(
+        "--gtk", action="store_true", help="Install GTK frontend desktop entry"
+    )
 
     # Tools
-    tools_parser = subparsers.add_parser('tools', help='Reverse engineering tools')
+    tools_parser = subparsers.add_parser("tools", help="Reverse engineering tools")
 
-    usb_devices_subparser = tools_parser.add_subparsers(dest='action', required=True)
-    arctis_devices_parser = usb_devices_subparser.add_parser('arctis-devices', help='List important Arctis device(s) information, like HID interfaces, alternate configs, etc.')
-    arctis_devices_parser.add_argument('--vendor-id', default=0x1038, type=int)
+    usb_devices_subparser = tools_parser.add_subparsers(dest="action", required=True)
+    arctis_devices_parser = usb_devices_subparser.add_parser(
+        "arctis-devices",
+        help="List important Arctis device(s) information, like HID interfaces, alternate configs, etc.",
+    )
+    arctis_devices_parser.add_argument("--vendor-id", default=0x1038, type=int)
 
     args = parser.parse_args()
 
-    if not hasattr(args, 'action'):
+    if not hasattr(args, "action"):
         parser.print_help()
         return
 
-    if args.command == 'udev':
-        if args.action == 'write-rules':
-            rules_path = args.rules_path if args.rules_path else next((Path(p) for p in UDEV_RULES_PATHS if Path(p).parent.is_dir()), None)
+    if args.command == "udev":
+        if args.action == "write-rules":
+            rules_path = (
+                args.rules_path
+                if args.rules_path
+                else next(
+                    (Path(p) for p in UDEV_RULES_PATHS if Path(p).parent.is_dir()), None
+                )
+            )
             if not rules_path:
-                print('No valid rules path found. Please specify one with --rules-path.')
+                print(
+                    "No valid rules path found. Please specify one with --rules-path."
+                )
                 sys.exit(1)
 
             result = write_udev_rules(rules_path, args.create_directories, args.force)
@@ -218,16 +313,17 @@ def main():
                 sys.exit(result)
             if args.reload:
                 sys.exit(reload_udev_rules())
-        elif args.action == 'reload-rules':
+        elif args.action == "reload-rules":
             sys.exit(reload_udev_rules())
-    elif args.command == 'desktop':
-        if args.action == 'write':
-            return write_desktop_entries()
-        elif args.action == 'remove':
+    elif args.command == "desktop":
+        if args.action == "write":
+            return write_desktop_entries(use_gtk=args.gtk, use_qt=args.qt)
+        elif args.action == "remove":
             return remove_desktop_entries()
-    elif args.command == 'tools':
-        if args.action == 'arctis-devices':
+    elif args.command == "tools":
+        if args.action == "arctis-devices":
             return arctis_usb_info(args.vendor_id)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
