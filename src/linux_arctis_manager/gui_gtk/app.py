@@ -13,6 +13,62 @@ from linux_arctis_manager.gui_gtk.dbus_client import GtkDbusClient
 logger = logging.getLogger("GtkApp")
 
 
+
+class HeroBox(Gtk.Box):
+    def __init__(self):
+        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=24)
+        self.set_halign(Gtk.Align.CENTER)
+        self.set_margin_top(48)
+        self.set_margin_bottom(48)
+
+        self.icon = Gtk.Image.new_from_icon_name("audio-headset-symbolic")
+        self.icon.set_pixel_size(96)
+        self.icon.add_css_class("dim-label")
+        
+        self.text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        self.text_box.set_valign(Gtk.Align.CENTER)
+        
+        self.title_label = Gtk.Label()
+        self.title_label.add_css_class("title-1")
+        
+        self.desc_label = Gtk.Label()
+        self.desc_label.add_css_class("body")
+        self.desc_label.add_css_class("dim-label")
+        
+        self.text_box.append(self.title_label)
+        self.text_box.append(self.desc_label)
+        
+        self.append(self.icon)
+        self.append(self.text_box)
+        
+        self._is_online = False
+        self._update_layout()
+        
+    def set_state(self, is_online):
+        if self._is_online != is_online:
+            self._is_online = is_online
+            self._update_layout()
+            
+    def _update_layout(self):
+        if self._is_online:
+            self.icon.set_visible(True)
+            self.desc_label.set_visible(True)
+            self.title_label.set_halign(Gtk.Align.START)
+            self.desc_label.set_halign(Gtk.Align.START)
+        else:
+            self.icon.set_visible(False)
+            self.desc_label.set_visible(False)
+            self.title_label.set_halign(Gtk.Align.CENTER)
+            
+    def set_title(self, text):
+        self.title_label.set_label(text)
+        
+    def set_description(self, text):
+        self.desc_label.set_label(text)
+        
+    def set_icon_name(self, name):
+        self.icon.set_from_icon_name(name)
+
 class ArctisManagerWindow(Adw.ApplicationWindow):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -44,7 +100,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         dash_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.dashboard_scroll.set_child(dash_vbox)
 
-        self.hero = Adw.StatusPage()
+        self.hero = HeroBox()
         self.hero.set_title(I18n.translate("ui", "app_name"))
         self.hero.set_icon_name("audio-headset-symbolic")
         self.hero.set_description(I18n.translate("ui", "no_device_detected"))
@@ -118,14 +174,16 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
 
         # If it's completely empty OR it's offline (like a dongle is plugged in but headset is off), hide the cards
         if self._is_offline:
-            # We don't overwrite the title if we know what device it is, but if we don't, fall back to app_name
+            self.hero.set_state(False)
+            # If no device connected at all
             if not status:
-                self.hero.set_title(I18n.translate("ui", "app_name"))
-            self.hero.set_description(
-                "Offline"
-                if power_val == "offline"
-                else I18n.translate("ui", "no_device_detected")
-            )
+                self.hero.set_title(I18n.translate("ui", "no_device_detected"))
+            else:
+                # Connected but turned off
+                if power_val == "offline":
+                    self.hero.set_title(I18n.translate("ui", "app_name") + " (Offline)")
+                else:
+                    self.hero.set_title(I18n.translate("ui", "no_device_detected"))
             self.dash_clamp.set_visible(False)
 
             # Make sure settings tab remains visible but without device settings
@@ -145,6 +203,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         self.dash_clamp.set_visible(True)
         self.settings_page.set_visible(True)
 
+        self.hero.set_state(True)
         if power_val == "online":
             self.hero.set_description("Connected and Active")
         elif power_val == "charging":
