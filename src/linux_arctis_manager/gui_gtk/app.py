@@ -287,7 +287,19 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             
         if "mix" in expected_cards:
             w = self._dash_widgets["mix"]
-            w["scale"].set_value(float(chat_o["value"]))
+            chat_val = float(chat_o["value"])
+            media_val = float(media_o["value"])
+            
+            total = chat_val + media_val
+            if total == 0:
+                normalized_val = 50.0
+            else:
+                # If game is 100 and chat is 100, (100 / 200) * 100 = 50%
+                # If game is 100 and chat is 0, (0 / 100) * 100 = 0%
+                # If game is 0 and chat is 100, (100 / 100) * 100 = 100%
+                normalized_val = (chat_val / total) * 100.0
+                
+            w["scale"].set_value(normalized_val)
             
         if "mic" in expected_cards:
             w = self._dash_widgets["mic"]
