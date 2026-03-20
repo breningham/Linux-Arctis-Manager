@@ -4,7 +4,8 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
 Item {
-    implicitWidth: parent ? parent.width : 400
+    // Remove fixed implicitWidth so FormLayout can constraint it properly
+    Layout.fillWidth: true
     implicitHeight: layout.implicitHeight
     Kirigami.FormData.label: modelData.title
 
@@ -66,12 +67,14 @@ Item {
     Component {
         id: comboComp
         Controls.ComboBox {
+            // This is crucial: force it to respect parent boundaries
             Layout.fillWidth: true
+            Layout.maximumWidth: parent ? parent.width : 300
+            
             textRole: "label"
             valueRole: "value"
             model: modelData.options
             
-            // Set current index based on value
             Component.onCompleted: {
                 for (let i = 0; i < count; i++) {
                     if (model.get ? (model.get(i).value === modelData.value) : (model[i].value === modelData.value)) {

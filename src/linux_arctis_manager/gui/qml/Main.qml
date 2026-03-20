@@ -10,24 +10,58 @@ Kirigami.ApplicationWindow {
     visible: true
     title: backend.deviceName !== "" ? backend.deviceName : "Arctis Manager"
 
-    globalDrawer: Kirigami.GlobalDrawer {
-        isMenu: false
-        actions: [
-            Kirigami.Action {
-                text: "Status"
-                icon.name: "audio-card"
-                onTriggered: pageStack.replace(dashboardComponent)
-            },
-            Kirigami.Action {
-                text: "Settings"
-                icon.name: "preferences-system"
-                onTriggered: pageStack.replace(settingsComponent)
+    // Using a standard SplitView for reliable desktop-style sidebar navigation
+    // This avoids the "cog wheel" GlobalDrawer mobile behavior completely
+    RowLayout {
+        anchors.fill: parent
+        spacing: 0
+
+        Rectangle {
+            Layout.preferredWidth: 200
+            Layout.fillHeight: true
+            color: Kirigami.Theme.alternateBackgroundColor
+
+            ListView {
+                anchors.fill: parent
+                anchors.margins: Kirigami.Units.smallSpacing
+                model: ListModel {
+                    ListElement { text: "Status"; icon: "audio-card"; page: "dashboard" }
+                    ListElement { text: "Settings"; icon: "preferences-system"; page: "settings" }
+                }
+                delegate: Kirigami.BasicListItem {
+                    text: model.text
+                    icon: model.icon
+                    highlighted: ListView.isCurrentItem
+                    onClicked: {
+                        ListView.view.currentIndex = index
+                        if (model.page === "dashboard") {
+                            mainLoader.sourceComponent = dashboardComponent
+                        } else {
+                            mainLoader.sourceComponent = settingsComponent
+                        }
+                    }
+                }
             }
-        ]
+            
+            // Right border line
+            Rectangle {
+                width: 1
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                color: Kirigami.Theme.disabledTextColor
+                opacity: 0.3
+            }
+        }
+
+        Loader {
+            id: mainLoader
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            sourceComponent: dashboardComponent
+        }
     }
 
     Component { id: dashboardComponent; DashboardPage {} }
     Component { id: settingsComponent; SettingsPage {} }
-
-    pageStack.initialPage: dashboardComponent
 }
