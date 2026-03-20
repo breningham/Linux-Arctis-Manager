@@ -219,7 +219,12 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
 
         power_val = flat_status.get("headset_power_status", {}).get("value", "offline")
 
+        was_offline = getattr(self, "_is_offline", True)
         self._is_offline = not status or power_val == "offline"
+        
+        # If we transitioned states, trigger a settings refresh so device settings appear/disappear
+        if was_offline != self._is_offline:
+            self.refresh_settings_ui()
 
         dev_name = self._settings_data.get("device_name", I18n.translate("ui", "app_name"))
 
@@ -240,7 +245,6 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
 
             # Make sure settings tab remains visible but without device settings
             self.settings_page.set_visible(True)
-            self.refresh_settings_ui()
             
             # Clear widgets dict so they get recreated next time it comes online
             self._dash_widgets.clear()
