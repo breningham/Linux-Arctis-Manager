@@ -128,21 +128,26 @@ class ArctisBackend(QObject):
                 item["max"] = cfg.get("range", {}).get("max", 100)
                 item["step"] = cfg.get("range", {}).get("step", 1)
             elif stype == "discrete_map":
-                # Convert list of ints to list of dicts for combo box
                 options = []
                 values_map = cfg.get("values_mapping", {})
-                for v in cfg.get("values", []):
-                    lbl = str(values_map.get(str(v), v))
-                    options.append({"value": v, "label": lbl})
+                # values_mapping keys are strings of ints in the JSON/dict, but could be ints
+                for k, v in values_map.items():
+                    try:
+                        k_val = int(k)
+                    except ValueError:
+                        k_val = k
+                    lbl = I18n.translate("settings_values", v)
+                    options.append({"value": k_val, "label": lbl})
                 item["options"] = options
             elif stype == "select":
                 source = cfg.get("options_source")
                 raw_opts = self._option_lists.get(source, [])
                 opts = []
                 for o in raw_opts:
-                    # QML doesn't like generic dicts without defined keys sometimes, 
-                    # but a list of dicts is fine if we use modelData.label
-                    opts.append({"value": o.get("value"), "label": o.get("label", str(o.get("value")))})
+                    # select lists from dbus return {'id': ..., 'name': ...}
+                    val = o.get("id", o.get("value"))
+                    lbl = o.get("name", o.get("label", str(val)))
+                    opts.append({"value": val, "label": lbl})
                 item["options"] = opts
                 
             result.append(item)

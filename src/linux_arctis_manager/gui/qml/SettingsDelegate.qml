@@ -16,7 +16,7 @@ ColumnLayout {
             Layout.fillWidth: true
             elide: Text.ElideRight
             font.bold: true
-            font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.1
+            font.pointSize: Math.round(Kirigami.Theme.defaultFont.pointSize * 1.1)
         }
 
         Loader {
@@ -34,9 +34,10 @@ ColumnLayout {
         Layout.fillWidth: true
         text: modelData.description
         color: Kirigami.Theme.disabledTextColor
-        font.pointSize: Kirigami.Theme.smallFont.pointSize
+        font.pointSize: Kirigami.Theme.smallFont.pointSize > 0 ? Kirigami.Theme.smallFont.pointSize : Math.round(Kirigami.Theme.defaultFont.pointSize * 0.9)
         wrapMode: Text.WordWrap
         visible: text !== ""
+        opacity: 0.8
     }
 
     Component {
@@ -54,7 +55,14 @@ ColumnLayout {
                 }
             }
             Controls.Label {
-                text: ctrlSlider.value
+                text: {
+                    let v = Math.round(ctrlSlider.value);
+                    if (modelData.id === "mic_volume") {
+                        let mx = modelData.max > 0 ? modelData.max : 100;
+                        return Math.round((v / mx) * 100) + "%";
+                    }
+                    return v;
+                }
                 Layout.minimumWidth: Kirigami.Units.gridUnit * 2
                 horizontalAlignment: Text.AlignRight
             }
