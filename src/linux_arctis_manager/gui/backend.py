@@ -143,6 +143,14 @@ class ArctisBackend(QObject):
                 source = cfg.get("options_source")
                 raw_opts = self._option_lists.get(source, [])
                 opts = []
+                
+                # Special case: add "None" / "Do nothing" to audio devices routing
+                if source == "pulse_audio_devices":
+                    opts.append({
+                        "value": "none",
+                        "label": I18n.translate("settings_values", "none")
+                    })
+                    
                 for o in raw_opts:
                     # select lists from dbus return {'id': ..., 'name': ...}
                     val = o.get("id", o.get("value"))
