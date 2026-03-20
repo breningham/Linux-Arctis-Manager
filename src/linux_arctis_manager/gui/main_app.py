@@ -1,166 +1,60 @@
 import logging
-from typing import Literal
-
-from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import (QApplication, QScrollArea, QFrame, QHBoxLayout, QLabel, QListWidget,
-                               QListWidgetItem, QVBoxLayout, QWidget)
+import os
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QIcon, QGuiApplication
+from PySide6.QtQml import QQmlApplicationEngine
 
 from linux_arctis_manager.gui.base_app import QBaseDesktopApp
 from linux_arctis_manager.gui.dbus_wrapper import DbusWrapper
-from linux_arctis_manager.gui.main_app_proto_widget import QMainAppProtoWidget
-from linux_arctis_manager.gui.settings_widget import QSettingsWidget
-from linux_arctis_manager.gui.status_widget import QStatusWidget
+from linux_arctis_manager.gui.backend import ArctisBackend
 from linux_arctis_manager.gui.ui_utils import get_icon_pixmap
-from linux_arctis_manager.i18n import I18n
 
 
 class QMainApp(QBaseDesktopApp):
-    app: QApplication
-    main_window: QMainAppProtoWidget
-
-    side_panel: QListWidget
-    main_panel: QWidget
-    status_widget: QStatusWidget
- 
-    def __init__(self, app: QApplication, log_level: int):
+    def __init__(self, app, log_level: int):
         super().__init__(parent=app)
 
-        self.logger = logging.getLogger('QMainApp')
+        self.logger = logging.getLogger('KirigamiApp')
         self.logger.setLevel(log_level)
-
         self.app = app
-        self.settings = {}
-        self.status = {}
 
         # Dbus wrapper
         self.dbus_wrapper = DbusWrapper()
-        self.dbus_wrapper.sig_settings.connect(self.on_settings_received)
-        self.dbus_wrapper.sig_status.connect(self.on_status_received)
+        self.backend = ArctisBackend(self.dbus_wrapper)
 
-        # Qt stuff
-        self.main_window = self.main_window_setup()
+        self.engine = QQmlApplicationEngine()
+        
+        # Add system Qt6 QML paths so pip-installed PySide6 can find Kirigami
+        self.engine.addImportPath("/usr/lib/qt6/qml")
+        self.engine.addImportPath("/usr/lib/x86_64-linux-gnu/qt6/qml")
+        
+        self.engine.rootContext().setContextProperty("backend", self.backend)
+        
+        self.app.setWindowIcon(QIcon(get_icon_pixmap()))
 
-        self.status_widget = QStatusWidget(self.main_panel)
-        self.general_settings_widget = QSettingsWidget(self.main_panel, 'general', 'general')
-        self.device_settings_widget = QSettingsWidget(self.main_panel, 'device', 'device')
-        self.device_settings_widget.layout().insertWidget(1, self.status_widget)
-
-        self.main_panel_widgets: dict[str, QWidget] = {
-            'general': self.general_settings_widget,
-            'device': self.device_settings_widget,
-        }
-
-        for widget in self.main_panel_widgets.values():
-            widget.hide()
-            self.main_panel_layout.addWidget(widget)
-
-        self.dbus_wrapper.sig_status.connect(self.status_widget.update_status)
-        self.dbus_wrapper.sig_settings.connect(self.general_settings_widget.update_settings)
-        self.dbus_wrapper.sig_settings.connect(self.device_settings_widget.update_settings)
-
-        self.switch_panel('general')
+        # Connect to DBus
         self.dbus_wrapper.start()
-
         self.destroyed.connect(self.sig_stop)
-    
-    def main_window_setup(self) -> QMainAppProtoWidget:
-        window = QMainAppProtoWidget()
 
-        window.setWindowFlags(Qt.WindowType.Window)
-        window.setWindowTitle('Arctis Manager')
-        window.setWindowIcon(QIcon(get_icon_pixmap()))
-
-        window_layout = QVBoxLayout()
-        window.setLayout(window_layout)
-
-        # TOP LABEL
-        top_label = QLabel(I18n.get_instance().translate('ui', 'app_name'))
-        top_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        font = top_label.font()
-        font.setBold(True)
-        font.setPointSize(20)
-        top_label.setFont(font)
-        window_layout.addWidget(top_label)
-
-        # MAIN AREA
-        main_widget = QWidget()
-        main_layout = QHBoxLayout()
-        main_widget.setLayout(main_layout)
-        window_layout.addWidget(main_widget)
-
-        window.setMinimumSize(800, 800)
-        available_geometry = window.screen().availableGeometry()
-        window.resize(min(960, available_geometry.width()), min(800, available_geometry.height()))
-
-        # SIDE PANEL
-        self.side_panel = QListWidget()
-        self.side_panel_items = [
-            
-            ('general', I18n.get_instance().translate('ui', 'general')),
-            ('device', I18n.get_instance().translate('ui', 'device')),
-        ]
-
-        for value, text in self.side_panel_items:
-            item = QListWidgetItem(text)
-            item.setData(Qt.ItemDataRole.UserRole, value)
-            self.side_panel.addItem(item)
-        self.side_panel.setFixedWidth(max(self.side_panel.sizeHintForColumn(0), 200))
-        self.side_panel.itemClicked.connect(lambda item: self.switch_panel(item.data(Qt.ItemDataRole.UserRole)))
-        main_layout.addWidget(self.side_panel)
-
-        # MAIN PANEL
-        self.main_panel_container = QScrollArea()
-        self.main_panel_container.setWidgetResizable(True)
-        self.main_panel_container.setFrameShape(QFrame.Shape.NoFrame)
-
-        self.main_panel = QWidget()
-        self.main_panel_layout = QVBoxLayout()
-        self.main_panel.setLayout(self.main_panel_layout)
-
-        self.main_panel_container.setWidget(self.main_panel)
-        main_layout.addWidget(self.main_panel_container)
-
-        return window
-    
-    def switch_panel(self, panel: Literal['status', 'general', 'device']) -> None:
-        if not self.main_panel_widgets[panel].isHidden():
-            return
-
-        for name, widget in self.main_panel_widgets.items():
-            if name == panel:
-                widget.show()
-            else:
-                widget.hide()
-    
     def start_sync(self):
-        self.logger.info('Starting Main Window app.')
-        self.main_window.show()
+        self.logger.info('Starting Kirigami app.')
+        qml_file = os.path.join(os.path.dirname(__file__), 'qml', 'Main.qml')
+        self.engine.load(QUrl.fromLocalFile(qml_file))
+
+        if not self.engine.rootObjects():
+            self.logger.error("Failed to load QML")
+            return
 
         self.app.exec()
     
     async def start(self):
         self.start_sync()
-    
-    def on_settings_received(self, settings):
-        if settings == self.settings:
-            return
-        
-        self.settings = settings
 
-    def on_status_received(self, status):
-        if status == self.status:
-            return
-        
-        self.status = status
-
-    @Slot()
     def sig_stop(self):
         if hasattr(self, '_stopping') and self._stopping:
             return
         self._stopping = True
 
         self.dbus_wrapper.stop()
-
         self.logger.debug('Received shutdown signal, shutting down.')
         self.app.quit()
