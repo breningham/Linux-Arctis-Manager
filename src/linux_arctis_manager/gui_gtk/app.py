@@ -13,70 +13,6 @@ from linux_arctis_manager.gui_gtk.dbus_client import GtkDbusClient
 logger = logging.getLogger("GtkApp")
 
 
-class MixDialWidget(Gtk.DrawingArea):
-    def __init__(self):
-        super().__init__()
-        self.set_size_request(150, 110)
-        self.set_draw_func(self.on_draw)
-        self.mix_value = 50.0  # 0 to 100 (0 = Game, 100 = Chat)
-
-    def set_mix(self, val):
-        self.mix_value = val
-        self.queue_draw()
-
-    def on_draw(self, area, cr, width, height):
-        # Enable anti-aliasing for smooth rounded edges
-        import cairo
-
-        cr.set_antialias(cairo.ANTIALIAS_BEST)
-
-        xc = width / 2.0
-        yc = height * 0.85
-        # Decrease radius and raise center slightly to give the knob breathing room so it doesn't clip the bounding box
-        radius = min(width / 2.0, height * 0.80) - 20
-
-        # Bring the angles up slightly so it forms more of an arc and less of a full circle
-        start_angle = math.pi * 0.90
-        end_angle = math.pi * 2.10
-
-        # 1. Draw Media Background Arc (Purple/Blue-ish)
-        cr.set_source_rgba(0.53, 0.35, 0.96, 1.0)
-        cr.set_line_width(16)
-        cr.set_line_cap(cairo.LineCap.ROUND)
-        cr.arc(xc, yc, radius, start_angle, end_angle)
-        cr.stroke()
-
-        # 2. Draw Chat Overlay Arc (Green/Teal-ish)
-        split_angle = start_angle + (self.mix_value / 100.0) * (end_angle - start_angle)
-
-        if split_angle > start_angle:
-            cr.set_source_rgba(0.18, 0.8, 0.44, 1.0)
-            cr.set_line_width(16)
-            cr.set_line_cap(cairo.LineCap.ROUND)
-            cr.arc(xc, yc, radius, start_angle, split_angle)
-            cr.stroke()
-
-        # 3. Draw the Knob indicator
-        ix = xc + radius * math.cos(split_angle)
-        iy = yc + radius * math.sin(split_angle)
-
-        # Knob Drop Shadow
-        cr.set_source_rgba(0.0, 0.0, 0.0, 0.15)
-        cr.arc(ix, iy + 2, 12, 0, 2 * math.pi)
-        cr.fill()
-
-        # Knob Body
-        cr.set_source_rgba(1.0, 1.0, 1.0, 1.0)
-        cr.arc(ix, iy, 12, 0, 2 * math.pi)
-        cr.fill()
-
-        # Knob Border
-        cr.set_source_rgba(0.85, 0.85, 0.85, 1.0)
-        cr.set_line_width(1.5)
-        cr.arc(ix, iy, 12, 0, 2 * math.pi)
-        cr.stroke()
-
-
 class ArctisManagerWindow(Adw.ApplicationWindow):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -212,43 +148,27 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         lbl_title.set_halign(Gtk.Align.START)
         inner.append(lbl_title)
 
-        dial_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        dial_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
 
-        # Normalized values
-        # chat_val is 0 to 100.
-        # Game is 100 at chat_val=0, 50 at chat_val=50, 0 at chat_val=100.
-        game_perc = int(100 - chat_val)
-        chat_perc = int(chat_val)
+        icon_game = Gtk.Image.new_from_icon_name("input-gaming-symbolic")
+        dial_box.append(icon_game)
 
-        game_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        game_box.set_valign(Gtk.Align.END)
-        game_box.set_margin_bottom(12)
-        lbl_game = Gtk.Label(label="Game")
-        lbl_game.add_css_class("dim-label")
-        lbl_game_v = Gtk.Label(label=f"{game_perc}%")
-        lbl_game_v.add_css_class("title-2")
-        lbl_game_v.add_css_class("numeric")
-        game_box.append(lbl_game)
-        game_box.append(lbl_game_v)
+        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
+        scale.set_value(float(chat_val))
+        scale.set_hexpand(True)
+        scale.set_draw_value(False)
+        scale.set_has_origin(False)
+        scale.add_mark(50, Gtk.PositionType.BOTTOM, None)
 
-        dial = MixDialWidget()
-        dial.set_mix(chat_val)
-        dial.set_hexpand(True)
+        def on_scale_change(sc, sc_type, val):
+            # Read-only trick: block user input by returning True
+            return True
 
-        chat_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        chat_box.set_valign(Gtk.Align.END)
-        chat_box.set_margin_bottom(12)
-        lbl_chat = Gtk.Label(label="Chat")
-        lbl_chat.add_css_class("dim-label")
-        lbl_chat_v = Gtk.Label(label=f"{chat_perc}%")
-        lbl_chat_v.add_css_class("title-2")
-        lbl_chat_v.add_css_class("numeric")
-        chat_box.append(lbl_chat)
-        chat_box.append(lbl_chat_v)
+        scale.connect("change-value", on_scale_change)
+        dial_box.append(scale)
 
-        dial_box.append(game_box)
-        dial_box.append(dial)
-        dial_box.append(chat_box)
+        icon_chat = Gtk.Image.new_from_icon_name("audio-headset-symbolic")
+        dial_box.append(icon_chat)
 
         inner.append(dial_box)
         return card
