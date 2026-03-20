@@ -157,9 +157,17 @@ def write_desktop_entries(use_gtk: bool = False, use_qt: bool = False) -> int:
         print("1. Qt/Kirigami (Default)")
         print("2. GTK4/Libadwaita")
         print("3. Both")
-        choice = input("Enter choice [1-3] (default 1): ").strip()
+        print("4. Cancel")
+        try:
+            choice = input("Enter choice [1-4] (default 1): ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\nCancelled.")
+            return 0
 
-        if choice == "2":
+        if choice == "4" or choice.lower() == "cancel" or choice.lower() == "c":
+            print("Cancelled.")
+            return 0
+        elif choice == "2":
             use_gtk = True
         elif choice == "3":
             use_gtk = True
