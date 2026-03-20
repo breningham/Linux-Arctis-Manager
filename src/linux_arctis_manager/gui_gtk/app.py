@@ -54,14 +54,11 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         self.dash_clamp.set_maximum_size(600)
         dash_vbox.append(self.dash_clamp)
 
-        self.dash_grid = Gtk.Grid()
-        self.dash_grid.set_column_spacing(16)
-        self.dash_grid.set_row_spacing(16)
-        self.dash_grid.set_margin_start(16)
-        self.dash_grid.set_margin_end(16)
-        self.dash_grid.set_margin_bottom(32)
-        self.dash_grid.set_column_homogeneous(True)
-        self.dash_clamp.set_child(self.dash_grid)
+        self.dash_group = Adw.PreferencesGroup()
+        self.dash_group.set_margin_start(16)
+        self.dash_group.set_margin_end(16)
+        self.dash_group.set_margin_bottom(32)
+        self.dash_clamp.set_child(self.dash_group)
 
         # --- TAB 2: Settings ---
         self.settings_page = Adw.PreferencesPage()
@@ -81,6 +78,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         self._option_lists = {}
         self._updating_ui = False
         self._dash_widgets = {}
+        self._dash_rows = []
         self._is_offline = True
 
         self.dbus_client.start()
@@ -94,85 +92,6 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         self._option_lists[list_name] = opts
         if self._settings_data:
             self.refresh_settings_ui()
-
-    def make_value_card(
-        self,
-        title: str,
-        value_text: str,
-        icon_name: str,
-        css_classes: str | list[str] = "title-1",
-    ):
-        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        card.add_css_class("card")
-
-        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
-        inner.set_margin_top(24)
-        inner.set_margin_bottom(24)
-        inner.set_margin_start(24)
-        inner.set_margin_end(24)
-        inner.set_vexpand(True)
-        card.append(inner)
-
-        top_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        icon = Gtk.Image.new_from_icon_name(icon_name)
-        icon.set_pixel_size(24)
-        top_box.append(icon)
-
-        lbl_title = Gtk.Label(label=title)
-        lbl_title.add_css_class("heading")
-        top_box.append(lbl_title)
-        inner.append(top_box)
-
-        lbl_val = Gtk.Label(label=value_text)
-        if isinstance(css_classes, str):
-            lbl_val.add_css_class(css_classes)
-        else:
-            for cls in css_classes:
-                lbl_val.add_css_class(cls)
-        lbl_val.add_css_class("numeric")
-        inner.append(lbl_val)
-        return card, icon, lbl_val
-
-    def make_mix_dial_card(self, title, chat_val):
-        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        card.add_css_class("card")
-
-        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
-        inner.set_margin_top(24)
-        inner.set_margin_bottom(24)
-        inner.set_margin_start(24)
-        inner.set_margin_end(24)
-        card.append(inner)
-
-        lbl_title = Gtk.Label(label=title)
-        lbl_title.add_css_class("heading")
-        lbl_title.set_halign(Gtk.Align.START)
-        inner.append(lbl_title)
-
-        dial_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-
-        icon_game = Gtk.Image.new_from_icon_name("input-gaming-symbolic")
-        dial_box.append(icon_game)
-
-        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
-        scale.set_value(float(chat_val))
-        scale.set_hexpand(True)
-        scale.set_draw_value(False)
-        scale.set_has_origin(False)
-        scale.add_mark(50, Gtk.PositionType.BOTTOM, None)
-
-        def on_scale_change(sc, sc_type, val):
-            # Read-only trick: block user input by returning True
-            return True
-
-        scale.connect("change-value", on_scale_change)
-        dial_box.append(scale)
-
-        icon_chat = Gtk.Image.new_from_icon_name("audio-headset-symbolic")
-        dial_box.append(icon_chat)
-
-        inner.append(dial_box)
-        return card, scale
 
     def on_status_received(self, status: dict):
         if status == self._status_data:
@@ -206,8 +125,9 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             
             # Clear widgets dict so they get recreated next time it comes online
             self._dash_widgets.clear()
-            while child := self.dash_grid.get_first_child():
-                self.dash_grid.remove(child)
+            for row in self._dash_rows:
+                self.dash_group.remove(row)
+            self._dash_rows.clear()
             return
 
         self.dash_clamp.set_visible(True)
@@ -235,32 +155,93 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         # If the expected cards changed, clear and rebuild layout
         if set(self._dash_widgets.keys()) != expected_cards:
             self._dash_widgets.clear()
-            while child := self.dash_grid.get_first_child():
-                self.dash_grid.remove(child)
+            for row in self._dash_rows:
+                self.dash_group.remove(row)
+            self._dash_rows.clear()
                 
-            row_idx = 0
             if "battery" in expected_cards:
-                card, icon, lbl = self.make_value_card("Battery", "", "battery-level-100-symbolic", "title-1")
-                self.dash_grid.attach(card, 0, row_idx, 1, 1)
-                self._dash_widgets["battery"] = {"card": card, "icon": icon, "label": lbl}
-            if "bluetooth" in expected_cards:
-                card, icon, lbl = self.make_value_card("Bluetooth", "", "bluetooth-active-symbolic", "title-2")
-                self.dash_grid.attach(card, 1, row_idx, 1, 1)
-                self._dash_widgets["bluetooth"] = {"card": card, "icon": icon, "label": lbl}
+                row = Adw.ActionRow(title="Battery")
+                icon = Gtk.Image.new_from_icon_name("battery-level-100-symbolic")
+                row.add_prefix(icon)
                 
-            if "battery" in expected_cards or "bluetooth" in expected_cards:
-                row_idx += 1
+                box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+                box.set_valign(Gtk.Align.CENTER)
+                
+                level_bar = Gtk.LevelBar()
+                level_bar.set_min_value(0)
+                level_bar.set_max_value(100)
+                level_bar.set_size_request(100, -1)
+                level_bar.set_valign(Gtk.Align.CENTER)
+                
+                lbl = Gtk.Label()
+                lbl.add_css_class("numeric")
+                
+                box.append(level_bar)
+                box.append(lbl)
+                
+                row.add_suffix(box)
+                self.dash_group.add(row)
+                self._dash_rows.append(row)
+                self._dash_widgets["battery"] = {"row": row, "icon": icon, "bar": level_bar, "label": lbl}
+                
+            if "bluetooth" in expected_cards:
+                row = Adw.ActionRow(title="Bluetooth")
+                icon = Gtk.Image.new_from_icon_name("bluetooth-active-symbolic")
+                row.add_prefix(icon)
+                
+                lbl = Gtk.Label()
+                lbl.set_valign(Gtk.Align.CENTER)
+                
+                row.add_suffix(lbl)
+                self.dash_group.add(row)
+                self._dash_rows.append(row)
+                self._dash_widgets["bluetooth"] = {"row": row, "icon": icon, "label": lbl}
                 
             if "mix" in expected_cards:
-                card, scale = self.make_mix_dial_card("Audio Mix", 50.0)
-                self.dash_grid.attach(card, 0, row_idx, 2, 1)
-                self._dash_widgets["mix"] = {"card": card, "scale": scale}
-                row_idx += 1
+                row = Adw.ActionRow(title="Audio Mix")
+                icon = Gtk.Image.new_from_icon_name("audio-volume-high-symbolic")
+                row.add_prefix(icon)
+                
+                box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+                box.set_valign(Gtk.Align.CENTER)
+                
+                icon_game = Gtk.Image.new_from_icon_name("input-gaming-symbolic")
+                icon_game.add_css_class("dim-label")
+                box.append(icon_game)
+
+                scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 100, 1)
+                scale.set_hexpand(True)
+                scale.set_draw_value(False)
+                scale.set_has_origin(False)
+                scale.add_mark(50, Gtk.PositionType.BOTTOM, None)
+                scale.set_size_request(200, -1)
+                
+                def on_scale_change(sc, sc_type, val):
+                    return True
+                scale.connect("change-value", on_scale_change)
+                box.append(scale)
+                
+                icon_chat = Gtk.Image.new_from_icon_name("audio-headset-symbolic")
+                icon_chat.add_css_class("dim-label")
+                box.append(icon_chat)
+                
+                row.add_suffix(box)
+                self.dash_group.add(row)
+                self._dash_rows.append(row)
+                self._dash_widgets["mix"] = {"row": row, "scale": scale}
                 
             if "mic" in expected_cards:
-                card, icon, lbl = self.make_value_card("Microphone", "", "audio-input-microphone-symbolic", "title-2")
-                self.dash_grid.attach(card, 0, row_idx, 2, 1)
-                self._dash_widgets["mic"] = {"card": card, "icon": icon, "label": lbl}
+                row = Adw.ActionRow(title="Microphone")
+                icon = Gtk.Image.new_from_icon_name("audio-input-microphone-symbolic")
+                row.add_prefix(icon)
+                
+                lbl = Gtk.Label()
+                lbl.set_valign(Gtk.Align.CENTER)
+                
+                row.add_suffix(lbl)
+                self.dash_group.add(row)
+                self._dash_rows.append(row)
+                self._dash_widgets["mic"] = {"row": row, "icon": icon, "label": lbl}
                 
         # Now update the existing widgets
         if "battery" in expected_cards:
@@ -272,6 +253,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             elif not is_charging and val <= 50: icon_name = "battery-level-50-symbolic"
             
             w["icon"].set_from_icon_name(icon_name)
+            w["bar"].set_value(val)
             w["label"].set_label(f"{int(val)}%" + (" ⚡" if is_charging else ""))
             
         if "bluetooth" in expected_cards:
@@ -279,11 +261,11 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             is_bt_conn = bt_o["value"] == "connected"
             icon_name = "bluetooth-active-symbolic" if is_bt_conn else "bluetooth-disabled-symbolic"
             txt = "Connected" if is_bt_conn else "Disconnected"
-            css_cls = ["title-2", "success"] if is_bt_conn else ["title-2", "error"]
+            css_cls = "success" if is_bt_conn else "error"
             
             w["icon"].set_from_icon_name(icon_name)
             w["label"].set_label(txt)
-            w["label"].set_css_classes(css_cls + ["numeric"])
+            w["label"].set_css_classes([css_cls])
             
         if "mix" in expected_cards:
             w = self._dash_widgets["mix"]
@@ -294,9 +276,6 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             if total == 0:
                 normalized_val = 50.0
             else:
-                # If game is 100 and chat is 100, (100 / 200) * 100 = 50%
-                # If game is 100 and chat is 0, (0 / 100) * 100 = 0%
-                # If game is 0 and chat is 100, (100 / 100) * 100 = 100%
                 normalized_val = (chat_val / total) * 100.0
                 
             w["scale"].set_value(normalized_val)
@@ -306,11 +285,11 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             is_muted = mic_o["value"] == "muted"
             icon_name = "microphone-sensitivity-muted-symbolic" if is_muted else "audio-input-microphone-symbolic"
             txt = "Muted" if is_muted else "Active"
-            css_cls = ["title-2", "error"] if is_muted else ["title-2", "success"]
+            css_cls = "error" if is_muted else "success"
             
             w["icon"].set_from_icon_name(icon_name)
             w["label"].set_label(txt)
-            w["label"].set_css_classes(css_cls + ["numeric"])
+            w["label"].set_css_classes([css_cls])
 
     def on_settings_received(self, new_settings: dict):
         if new_settings == self._settings_data:
