@@ -69,7 +69,7 @@ class HeroBox(Gtk.Box):
         elif self._state == "offline":
             self.icon.set_visible(True)
             self.icon.add_css_class("dim-label")
-            self.icon.set_from_icon_name("bluetooth-disconnected-symbolic") # Alternative icon for disconnected
+            self.icon.set_from_icon_name("audio-headset-symbolic")
             self.desc_label.set_visible(True)
             self.desc_label.add_css_class("dim-label")
             self.title_label.set_halign(Gtk.Align.CENTER)
@@ -78,9 +78,12 @@ class HeroBox(Gtk.Box):
             
         else: # disconnected
             self.icon.set_visible(False)
-            self.desc_label.set_visible(False)
+            self.desc_label.set_visible(True)
+            self.desc_label.add_css_class("dim-label")
             self.title_label.set_halign(Gtk.Align.CENTER)
             self.title_label.set_justify(Gtk.Justification.CENTER)
+            self.desc_label.set_halign(Gtk.Align.CENTER)
+            self.desc_label.set_justify(Gtk.Justification.CENTER)
             
     def set_title(self, text):
         self.title_label.set_label(text)
@@ -158,6 +161,12 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
         self.dash_vbox_inner.append(self.mix_group)
         
         self.dash_clamp.set_child(self.dash_vbox_inner)
+        self.dash_clamp.set_visible(False)
+        self.mix_group.set_visible(False)
+        
+        self.hero.set_state("disconnected")
+        self.hero.set_title(I18n.translate("ui", "app_name"))
+        self.hero.set_description("No supported device found")
 
         # --- TAB 2: Settings ---
         self.settings_page = Adw.PreferencesPage()
@@ -194,8 +203,13 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             self.refresh_settings_ui()
 
     def on_status_received(self, status: dict):
-        if status == self._status_data:
+        if status == self._status_data and not getattr(self, "_first_status_handled", False):
+            self._first_status_handled = True
+            # Let it run through to set up the initial state
+        elif status == self._status_data:
             return
+        
+        self._first_status_handled = True
         self._status_data = status
 
         flat_status = {}
@@ -214,7 +228,8 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             # If no device connected at all (State 3)
             if not status:
                 self.hero.set_state("disconnected")
-                self.hero.set_title(I18n.translate("ui", "no_device_detected"))
+                self.hero.set_title(I18n.translate("ui", "app_name"))
+                self.hero.set_description("No supported device found")
             else:
                 # Connected but turned off (State 2)
                 self.hero.set_state("offline")
