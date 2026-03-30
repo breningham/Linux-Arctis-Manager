@@ -1863,8 +1863,18 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                 w["mode"] = mode
             # Only update the canvas/last_value for the currently active EQ target
             if mode == self._eq_mode:
-                w["last_value"] = value
-                w["canvas"].set_values(value)
+                # Additionally ensure the visible tab matches the target to avoid
+                # updating a hidden canvas when switching quickly between modes
+                try:
+                    visible_ok = (
+                        getattr(self, "_eq_stack", None) is None
+                        or self._eq_stack.get_visible_child_name() == mode
+                    )
+                except Exception:
+                    visible_ok = True
+                if visible_ok:
+                    w["last_value"] = value
+                    w["canvas"].set_values(value)
             pn = w["preset_names"]
 
             curr_idx = -1
