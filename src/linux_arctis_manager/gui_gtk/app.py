@@ -21,6 +21,7 @@ from linux_arctis_manager.gui_gtk.preset_manager import (
     normalize_parametric_to_40,
     values_match,
     EqStateCache,
+    friendly_preset_name,
 )
 from linux_arctis_manager.gui_gtk.eq_math import (
     compute_response,
@@ -1366,14 +1367,20 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                                 presets = preset_manager.get_parametric_eq_presets(
                                     bank_name
                                 )
-                                names = list(presets.keys())
+                                real_names = list(presets.keys())
+                                disp_names = [
+                                    friendly_preset_name(n) for n in real_names
+                                ]
                                 if (
                                     "Custom" in w.get("preset_names", [])
-                                    and "Custom" not in names
+                                    and "Custom" not in disp_names
                                 ):
-                                    names.append("Custom")
-                                w["preset_names"] = names
-                                w["preset_row"].set_model(Gtk.StringList.new(names))
+                                    disp_names.append("Custom")
+                                w["real_names"] = real_names
+                                w["preset_names"] = disp_names
+                                w["preset_row"].set_model(
+                                    Gtk.StringList.new(disp_names)
+                                )
                                 mv = (
                                     self._eq_values_by_mode.get(ck, {}).get(
                                         setting_name
@@ -1385,14 +1392,14 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                                     w["canvas"].set_values(mv)
                                 target_idx = -1
                                 if mv is not None:
-                                    for i, nm in enumerate(names):
+                                    for i, nm in enumerate(real_names):
                                         if nm in presets and values_match(
                                             mv, presets[nm]
                                         ):
                                             target_idx = i
                                             break
-                                if target_idx == -1 and "Custom" in names:
-                                    target_idx = names.index("Custom")
+                                if target_idx == -1 and "Custom" in disp_names:
+                                    target_idx = disp_names.index("Custom")
                                 if target_idx != -1:
                                     w["preset_row"].set_selected(target_idx)
                         self._updating_ui = tmp
@@ -1458,12 +1465,15 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                                 and w.get("mode") == self._eq_mode
                             ):
                                 presets = preset_manager.get_parametric_eq_presets(bank)
-                                names = list(presets.keys())
+                                real_names = list(presets.keys())
+                                disp_names = [
+                                    friendly_preset_name(n) for n in real_names
+                                ]
                                 if (
                                     "Custom" in w.get("preset_names", [])
-                                    and "Custom" not in names
+                                    and "Custom" not in disp_names
                                 ):
-                                    names.append("Custom")
+                                    disp_names.append("Custom")
                                 sel_idx = w["preset_row"].get_selected()
                                 prev_names = w.get("preset_names", [])
                                 prev_sel_name = (
@@ -1471,8 +1481,11 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                                     if 0 <= sel_idx < len(prev_names)
                                     else None
                                 )
-                                w["preset_names"] = names
-                                w["preset_row"].set_model(Gtk.StringList.new(names))
+                                w["real_names"] = real_names
+                                w["preset_names"] = disp_names
+                                w["preset_row"].set_model(
+                                    Gtk.StringList.new(disp_names)
+                                )
                                 target_idx = -1
                                 setting_name = w.get("setting_name")
                                 if setting_name:
@@ -1481,29 +1494,34 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                                         setting_name
                                     )
                                     if mv is not None:
-                                        for i, nm in enumerate(names):
+                                        for i, nm in enumerate(real_names):
                                             if nm in presets and values_match(
                                                 mv, presets[nm]
                                             ):
                                                 target_idx = i
                                                 break
                                 if target_idx == -1:
-                                    if prev_sel_name and prev_sel_name in names:
-                                        target_idx = names.index(prev_sel_name)
-                                    elif "Flat" in names:
-                                        target_idx = names.index("Flat")
-                                    elif "Custom" in names:
-                                        target_idx = names.index("Custom")
+                                    if prev_sel_name and prev_sel_name in disp_names:
+                                        target_idx = disp_names.index(prev_sel_name)
+                                    elif "Flat" in real_names:
+                                        target_idx = real_names.index("Flat")
+                                    elif "Custom" in disp_names:
+                                        target_idx = disp_names.index("Custom")
                                 if target_idx != -1:
                                     w["preset_row"].set_selected(target_idx)
                                 if "delete_btn" in w and 0 <= w[
                                     "preset_row"
-                                ].get_selected() < len(names):
-                                    sel_name = names[w["preset_row"].get_selected()]
+                                ].get_selected() < len(disp_names):
+                                    idx = w["preset_row"].get_selected()
+                                    if idx < len(real_names):
+                                        sel_real = real_names[idx]
+                                    else:
+                                        sel_real = None
                                     w["delete_btn"].set_visible(
-                                        sel_name in presets
+                                        bool(sel_real)
+                                        and sel_real in presets
                                         and not preset_manager.is_builtin_parametric(
-                                            sel_name, bank
+                                            sel_real, bank
                                         )
                                     )
                         self._updating_ui = tmp
@@ -1591,25 +1609,26 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             eq_widgets = {}
             # Preset dropdown with delete button
             preset_row = Adw.ComboRow(title="EQ Preset")
-            preset_names = list(presets.keys())
+            real_names = list(presets.keys())
             curr_idx = -1
             # Prefer cached preset name for this target if available
             try:
                 ck = self._cache_key_for_mode(mode)
                 cached_name = self._eq_cache.get_preset(ck, name)
-                if cached_name and cached_name in preset_names:
-                    curr_idx = preset_names.index(cached_name)
+                if cached_name and cached_name in real_names:
+                    curr_idx = real_names.index(cached_name)
             except Exception:
                 pass
-            for i, pn in enumerate(preset_names):
+            for i, pn in enumerate(real_names):
                 target = presets[pn]
                 if values_match(value, target):
                     curr_idx = i
                     break
+            disp_names = [friendly_preset_name(n) for n in real_names]
             if curr_idx == -1:
-                preset_names.append("Custom")
-                curr_idx = len(preset_names) - 1
-            preset_row.set_model(Gtk.StringList.new(preset_names))
+                disp_names.append("Custom")
+                curr_idx = len(disp_names) - 1
+            preset_row.set_model(Gtk.StringList.new(disp_names))
             preset_row.set_selected(curr_idx)
 
             delete_btn = Gtk.Button()
@@ -1627,21 +1646,26 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             delete_btn.set_visible(False)
             preset_row.add_suffix(delete_btn)
 
-            def _update_delete_visibility(selected_name: str):
-                delete_btn.set_visible(
-                    selected_name in preset_manager.get_parametric_eq_presets(bank)
-                    and not preset_manager.is_builtin_parametric(selected_name, bank)
-                )
+            def _update_delete_visibility(_selected_display_name: str | None = None):
+                idx = preset_row.get_selected()
+                if idx < len(eq_widgets.get("real_names", [])):
+                    sel_real = eq_widgets["real_names"][idx]
+                    delete_btn.set_visible(
+                        sel_real in preset_manager.get_parametric_eq_presets(bank)
+                        and not preset_manager.is_builtin_parametric(sel_real, bank)
+                    )
+                else:
+                    delete_btn.set_visible(False)
 
             def on_sel(cr, ps, n=name):
                 if self._updating_ui:
                     return
-                pl = eq_widgets["preset_names"]
-                sn = pl[cr.get_selected()]
-                _update_delete_visibility(sn)
+                idx = cr.get_selected()
+                _update_delete_visibility()
                 new_presets = preset_manager.get_parametric_eq_presets(bank)
-                if sn in new_presets:
-                    fv = list(new_presets[sn])
+                if idx < len(eq_widgets.get("real_names", [])):
+                    sn_real = eq_widgets["real_names"][idx]
+                    fv = list(new_presets[sn_real])
                     canvas = self._settings_widgets[widget_key]["canvas"]
                     canvas.set_values(fv)
                     if "bands_label" in eq_widgets:
@@ -1654,7 +1678,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                     try:
                         ck = self._cache_key_for_mode(mode)
                         self._eq_cache.set_value(ck, n, fv)
-                        self._eq_cache.set_preset(ck, n, sn)
+                        self._eq_cache.set_preset(ck, n, sn_real)
                     except Exception:
                         pass
                 eq_widgets["revealer"].set_reveal_child(False)
@@ -1662,25 +1686,35 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             preset_row.connect("notify::selected", on_sel)
             group.add(preset_row)
             eq_widgets["preset_row"] = preset_row
-            eq_widgets["preset_names"] = preset_names
+            eq_widgets["real_names"] = real_names
+            eq_widgets["preset_names"] = disp_names
             eq_widgets["delete_btn"] = delete_btn
 
             def on_delete_clicked(_):
                 pl = eq_widgets["preset_names"]
                 if not pl:
                     return
-                sn = pl[preset_row.get_selected()]
-                if preset_manager.delete_parametric_preset(sn, bank):
+                idx = preset_row.get_selected()
+                if idx < len(eq_widgets.get("real_names", [])):
+                    sn_real = eq_widgets["real_names"][idx]
+                else:
+                    sn_real = None
+                if sn_real and preset_manager.delete_parametric_preset(sn_real, bank):
                     new_presets = preset_manager.get_parametric_eq_presets(bank)
-                    new_names = list(new_presets.keys())
-                    if "Custom" in pl and "Custom" not in new_names:
-                        new_names.append("Custom")
-                    eq_widgets["preset_names"] = new_names
+                    new_real = list(new_presets.keys())
+                    new_disp = [friendly_preset_name(n) for n in new_real]
+                    if "Custom" in pl and "Custom" not in new_disp:
+                        new_disp.append("Custom")
+                    eq_widgets["real_names"] = new_real
+                    eq_widgets["preset_names"] = new_disp
                     preset_row.set_model(Gtk.StringList.new(eq_widgets["preset_names"]))
                     if "Flat" in new_presets:
-                        preset_row.set_selected(
-                            eq_widgets["preset_names"].index("Flat")
-                        )
+                        # Select the index of Flat in real_names (same index in disp list)
+                        try:
+                            flat_idx = new_real.index("Flat")
+                            preset_row.set_selected(flat_idx)
+                        except ValueError:
+                            pass
                     delete_btn.set_visible(False)
 
             delete_btn.connect("clicked", on_delete_clicked)
@@ -1718,8 +1752,8 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             canvas = EQCanvas(name, self.dbus_client)
             canvas.set_values(value)
             # If initial value matches a preset with active_bands metadata, apply it
-            if 0 <= curr_idx < len(preset_names):
-                init_name = preset_names[curr_idx]
+            if 0 <= curr_idx < len(real_names):
+                init_name = real_names[curr_idx]
                 if init_name in presets and isinstance(presets[init_name], dict):
                     ab = presets[init_name].get("active_bands")
                     if isinstance(ab, int):
@@ -1880,13 +1914,14 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                 if visible_ok:
                     w["last_value"] = value
                     w["canvas"].set_values(value)
-            pn = w["preset_names"]
+            pn = w["preset_names"]  # display names
 
             curr_idx = -1
             current_presets = preset_manager.get_parametric_eq_presets(bank)
-            for i, p_name in enumerate(pn):
-                if p_name in current_presets and values_match(
-                    value, current_presets[p_name]
+            real_names = w.get("real_names", [])
+            for i, real in enumerate(real_names):
+                if real in current_presets and values_match(
+                    value, current_presets[real]
                 ):
                     curr_idx = i
                     break
@@ -1899,10 +1934,15 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                 self._updating_ui = temp
             # update delete button state if available
             if "delete_btn" in w and 0 <= w["preset_row"].get_selected() < len(pn):
-                sel_name = pn[w["preset_row"].get_selected()]
+                idx = w["preset_row"].get_selected()
+                if idx < len(real_names):
+                    sel_real = real_names[idx]
+                else:
+                    sel_real = None
                 w["delete_btn"].set_visible(
-                    sel_name in current_presets
-                    and not preset_manager.is_builtin_parametric(sel_name, bank)
+                    bool(sel_real)
+                    and sel_real in current_presets
+                    and not preset_manager.is_builtin_parametric(sel_real, bank)
                 )
             if "bands_label" in w:
                 c = w["canvas"]
