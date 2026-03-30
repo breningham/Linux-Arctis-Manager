@@ -22,6 +22,10 @@ from linux_arctis_manager.gui_gtk.preset_manager import (
     values_match,
     EqStateCache,
 )
+from linux_arctis_manager.gui_gtk.eq_math import (
+    compute_response,
+    compute_type_curve,
+)
 
 preset_manager = PresetManager()
 
@@ -594,44 +598,12 @@ class EQCanvas(Gtk.DrawingArea):
             cr.line_to(left_pad + plot_w, y)
             cr.stroke()
 
-        # Curve
+        # Curve (use pure helper for deterministic math)
         cr.set_source_rgba(0.2, 0.6, 1.0, 1.0)
         cr.set_line_width(3.0)
-        num_bands = len(self.values) // 4
-        for x in range(int(plot_w) + 1):
-            f = 10 ** (log_min + (x / plot_w) * (log_max - log_min))
-            total_gain = 0.0
-            for i in range(num_bands):
-                fc, gain, q, ftype = (
-                    self.values[i * 4],
-                    self.values[i * 4 + 1],
-                    self.values[i * 4 + 2],
-                    int(self.values[i * 4 + 3]) if len(self.values) >= 40 else 1,
-                )
-                if ftype == 0:
-                    continue
-                if f > 0 and fc > 0 and q > 0:
-                    # Keep math simple; peaking accurate, others approximated for visualization
-                    if ftype in (1, 6):  # peaking / notch
-                        ww = (f / fc) - (fc / f)
-                        total_gain += gain / (1 + (q * q) * (ww * ww))
-                    elif ftype == 2:  # high shelf
-                        total_gain += gain * (1 / (1 + (fc / max(f, 1e-6)) ** (2 * q)))
-                    elif ftype == 4:  # low shelf
-                        total_gain += gain * (1 / (1 + (max(f, 1e-6) / fc) ** (2 * q)))
-                    elif ftype == 3:  # high pass
-                        total_gain += -abs(gain) * (
-                            1 / (1 + (fc / max(f, 1e-6)) ** (2 * q))
-                        )
-                    elif ftype == 5:  # low pass
-                        total_gain += -abs(gain) * (
-                            1 / (1 + (max(f, 1e-6) / fc) ** (2 * q))
-                        )
-            y = (
-                top_pad
-                + plot_h / 2
-                - (max(-15.0, min(15.0, total_gain)) / 15.0) * (plot_h / 2)
-            )
+        resp = compute_response(self.values, int(plot_w))
+        for x, gsum in enumerate(resp):
+            y = top_pad + plot_h / 2 - (gsum / 15.0) * (plot_h / 2)
             xp = left_pad + x
             if x == 0:
                 cr.move_to(xp, y)
@@ -672,6 +644,7 @@ class EQCanvas(Gtk.DrawingArea):
             logger.debug("Failed to draw axis labels: %s", e)
 
         # Nodes
+        num_bands = len(self.values) // 4
         for i in range(num_bands):
             if len(self.values) >= 40 and int(self.values[i * 4 + 3]) == 0:
                 continue
@@ -708,89 +681,17 @@ class EQCanvas(Gtk.DrawingArea):
                 r, g, b = colors.get(t, (1.0, 1.0, 0.2))
                 cr.set_source_rgba(r, g, b, 1.0)
                 cr.set_line_width(2.5)
-                first = True
-                for x in range(width + 1):
-                    f = 10 ** (log_min + (x / width) * (log_max - log_min))
-                    gsum = 0.0
-                    for i in range(len(self.values) // 4):
-                        fc = self.values[i * 4]
-                        gain = self.values[i * 4 + 1]
-                        q = self.values[i * 4 + 2]
-                        ftype = int(self.values[i * 4 + 3])
-                        if ftype != t or ftype == 0:
-                            continue
-                        if f > 0 and fc > 0 and q > 0:
-                            if ftype in (1, 6):
-                                ww = (f / fc) - (fc / f)
-                                gsum += gain / (1 + (q * q) * (ww * ww))
-                            elif ftype == 2:
-                                gsum += gain * (
-                                    1 / (1 + (fc / max(f, 1e-6)) ** (2 * q))
-                                )
-                            elif ftype == 4:
-                                gsum += gain * (
-                                    1 / (1 + (max(f, 1e-6) / fc) ** (2 * q))
-                                )
-                            elif ftype == 3:
-                                gsum += -abs(gain) * (
-                                    1 / (1 + (fc / max(f, 1e-6)) ** (2 * q))
-                                )
-                            elif ftype == 5:
-                                gsum += -abs(gain) * (
-                                    1 / (1 + (max(f, 1e-6) / fc) ** (2 * q))
-                                )
-                    y = height / 2 - (max(-15.0, min(15.0, gsum)) / 15.0) * (height / 2)
-                    if first:
-                        cr.move_to(x, y)
-                        first = False
+                tcurve = compute_type_curve(self.values, t, int(plot_w))
+                for x, gsum in enumerate(tcurve):
+                    y = top_pad + plot_h / 2 - (gsum / 15.0) * (plot_h / 2)
+                    xp = left_pad + x
+                    if x == 0:
+                        cr.move_to(xp, y)
                     else:
-                        cr.line_to(x, y)
+                        cr.line_to(xp, y)
                 cr.stroke()
 
-        # Highlight single-band curve on hover/selection
-        hilite_idx = self.selected_band if self.selected_band != -1 else self.hover_band
-        if hilite_idx is not None and hilite_idx >= 0 and len(self.values) >= 40:
-            base = hilite_idx * 4
-            fc = self.values[base]
-            gain = self.values[base + 1]
-            q = self.values[base + 2]
-            ftype = int(self.values[base + 3])
-            if ftype != 0 and fc > 0 and q > 0:
-                # Color by type
-                colors = {
-                    1: (0.2, 0.8, 0.2),  # peaking
-                    2: (0.9, 0.6, 0.2),  # high shelf
-                    3: (0.9, 0.2, 0.2),  # high pass
-                    4: (0.2, 0.6, 0.9),  # low shelf
-                    5: (0.6, 0.2, 0.9),  # low pass
-                    6: (0.9, 0.2, 0.6),  # notch
-                }
-                r, g, b = colors.get(ftype, (1.0, 1.0, 0.2))
-                cr.set_source_rgba(r, g, b, 1.0)
-                cr.set_line_width(2.5)
-                first = True
-                for x in range(width + 1):
-                    f = 10 ** (log_min + (x / width) * (log_max - log_min))
-                    if ftype in (1, 6):
-                        ww = (f / fc) - (fc / f)
-                        gval = gain / (1 + (q * q) * (ww * ww))
-                    elif ftype == 2:
-                        gval = gain * (1 / (1 + (fc / max(f, 1e-6)) ** (2 * q)))
-                    elif ftype == 4:
-                        gval = gain * (1 / (1 + (max(f, 1e-6) / fc) ** (2 * q)))
-                    elif ftype == 3:
-                        gval = -abs(gain) * (1 / (1 + (fc / max(f, 1e-6)) ** (2 * q)))
-                    elif ftype == 5:
-                        gval = -abs(gain) * (1 / (1 + (max(f, 1e-6) / fc) ** (2 * q)))
-                    else:
-                        gval = 0.0
-                    y = height / 2 - (max(-15.0, min(15.0, gval)) / 15.0) * (height / 2)
-                    if first:
-                        cr.move_to(x, y)
-                        first = False
-                    else:
-                        cr.line_to(x, y)
-                cr.stroke()
+        # Removed: per-band highlight to avoid duplicate lines; single per-type curve is drawn above
 
     def get_values(self):
         # Return a shallow copy to avoid accidental external mutation
