@@ -26,3 +26,18 @@ Requirements:
 
 Plans:
 - [x] 02-01-PLAN.md — Close editor on Type change and show friendly preset names
+
+### Phase 03: eq-isolation-hardening
+
+Goal: Eliminate any remaining cross-tab state leaks by rendering three independent Parametric EQ canvases/controllers (Wireless, Bluetooth, Mic) with per-target cache binding, ensure D-Bus eq_target stays in sync with the active tab and only the visible canvas updates, and add automated tests to prevent regressions. Also finalize preset naming polish so UI shows friendly names without "GG:" while internal keys remain unchanged.
+
+Requirements:
+- EQISO-01: Three independent Parametric EQ canvases/controllers exist (Wireless, Bluetooth, Mic), each bound to its own state model and EqStateCache key; editing one does not affect the others.
+- EQISO-02: D-Bus eq_target switches are synchronized with the active tab, and only the visible canvas updates when settings change.
+- EQISO-03: Automated tests prove isolation and that inactive targets do not mutate during tab switches; regression suite runs under pytest.
+- EQISO-04: Preset lists display friendly names without the "GG:" prefix across GTK views; selection/deletion/cache mapping still operate on the original keys.
+
+**Plans:** 1 plan
+
+Plans:
+- [ ] 03-01-PLAN.md — Tests to harden EQ isolation and tab-target sync; verify friendly preset display
