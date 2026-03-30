@@ -485,6 +485,11 @@ class EQCanvas(Gtk.DrawingArea):
         self.dbus_client.change_setting(self.name, self.values)
         if hasattr(self, "on_modified_callback") and self.on_modified_callback:
             self.on_modified_callback()
+        # Safety net: dismiss the editor after committing the type change
+        try:
+            self.popover.popdown()
+        except Exception:
+            pass
 
     def _show_popover(self):
         if self.selected_band == -1:
