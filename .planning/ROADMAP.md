@@ -37,7 +37,7 @@ Requirements:
 - EQISO-03: Automated tests prove isolation and that inactive targets do not mutate during tab switches; regression suite runs under pytest.
 - EQISO-04: Preset lists display friendly names without the "GG:" prefix across GTK views; selection/deletion/cache mapping still operate on the original keys.
 
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 03-01-PLAN.md — Tests to harden EQ isolation and tab-target sync; verify friendly preset display
+- [x] 03-01-PLAN.md — Tests to harden EQ isolation and tab-target sync; verify friendly preset display
