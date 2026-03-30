@@ -52,8 +52,8 @@ Requirements:
 - PR-03: Reset button is placed inside the revealer and styled as destructive.
 - PR-04: Behavior applies to both Parametric EQ and Graphic EQ interfaces.
 
-**Plans:** 0/2 plans pending
+**Plans:** 2/2 plans complete
 
 Plans:
-- [ ] 04-01-PLAN.md — TDD: visibility + target logic for Reset action
-- [ ] 04-02-PLAN.md — Integrate Reset-in-revealer for Parametric + Graphic EQ
+- [x] 04-01-PLAN.md — TDD: visibility + target logic for Reset action
+- [x] 04-02-PLAN.md — Integrate Reset-in-revealer for Parametric + Graphic EQ
