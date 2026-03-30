@@ -41,3 +41,19 @@ Requirements:
 
 Plans:
 - [x] 03-01-PLAN.md — Tests to harden EQ isolation and tab-target sync; verify friendly preset display
+
+### Phase 04: preset-reset-ux
+
+Goal: Make EQ Reset behavior intuitive and consistent by resetting to the currently selected preset's original values (not Flat), showing the Reset action only when changes have been made to that preset, and placing the Reset button inside the existing revealer with destructive styling across both Parametric and Graphic EQ UIs.
+
+Requirements:
+- PR-01: Reset action restores the selected preset's original values (not Flat).
+- PR-02: Reset action is only visible when current EQ values differ from the selected preset.
+- PR-03: Reset button is placed inside the revealer and styled as destructive.
+- PR-04: Behavior applies to both Parametric EQ and Graphic EQ interfaces.
+
+**Plans:** 0/2 plans pending
+
+Plans:
+- [ ] 04-01-PLAN.md — TDD: visibility + target logic for Reset action
+- [ ] 04-02-PLAN.md — Integrate Reset-in-revealer for Parametric + Graphic EQ
