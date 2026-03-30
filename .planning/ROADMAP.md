@@ -22,7 +22,7 @@ Requirements:
 - GUI-04: After changing a band Type, clicking outside reliably closes the editor (explicit popdown safety) and no stuck popovers occur.
 - GUI-05: Preset list displays friendly names without the "GG:" prefix while selection, deletion rules, and cache mapping still operate on the original keys.
 
-**Plans:** 1/1 plans planned
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 02-01-PLAN.md — Close editor on Type change and show friendly preset names
+- [x] 02-01-PLAN.md — Close editor on Type change and show friendly preset names
