@@ -23,6 +23,10 @@ from linux_arctis_manager.gui_gtk.preset_manager import (
     EqStateCache,
     friendly_preset_name,
 )
+from linux_arctis_manager.gui_gtk.eq_ui_logic import (
+    should_show_reset,
+    get_reset_target,
+)
 from linux_arctis_manager.gui_gtk.eq_math import (
     compute_response,
     compute_type_curve,
@@ -1720,28 +1724,20 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
 
             delete_btn.connect("clicked", on_delete_clicked)
 
-            # Reset row
+            # Reset row (graphic changes will move this into revealer in Task 2)
             reset_row = Adw.ActionRow(
-                title="Manual Adjustment", subtitle="Reset all bands to 0dB Gain"
+                title="Manual Adjustment", subtitle="Reset all bands to 0dB"
             )
             reset_btn = Gtk.Button(label="Reset to Flat")
             reset_btn.set_valign(Gtk.Align.CENTER)
             reset_btn.add_css_class("suggested-action")
 
             def on_reset(_):
-                fv = cfg.get("default_value", [0.0] * 30).copy()
-                for i in range(0, len(fv), 3):
-                    fv[i + 1] = 0.0
-                self._settings_widgets[widget_key]["canvas"].set_values(fv)
-                self._settings_widgets[widget_key]["last_value"] = fv
+                fv = [0] * len(bands)
+                self._settings_widgets[name]["last_value"] = fv
+                for sc in self._settings_widgets[name]["scales"]:
+                    sc.set_value(0.0)
                 self.dbus_client.change_setting(name, fv)
-                try:
-                    ck = self._cache_key_for_mode(mode)
-                    self._eq_cache.set_value(ck, name, fv)
-                    # Flat likely matches
-                    self._eq_cache.set_preset(ck, name, "Flat")
-                except Exception:
-                    pass
 
             reset_btn.connect("clicked", on_reset)
             reset_row.add_suffix(reset_btn)
@@ -1804,10 +1800,15 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             entry.set_hexpand(True)
             entry.set_width_chars(30)
             entry.set_placeholder_text("Custom-1")
+            # New: Reset-to-Preset button inside revealer
+            reset_btn = Gtk.Button(label="Reset to Preset")
+            reset_btn.add_css_class("destructive-action")
+            reset_btn.add_css_class("pill")
             save_btn = Gtk.Button(label="Save Preset")
             save_btn.add_css_class("suggested-action")
             save_btn.add_css_class("pill")
             rbox.append(entry)
+            rbox.append(reset_btn)
             rbox.append(save_btn)
             revealer.set_child(rbox)
             vbox.append(revealer)
@@ -1818,6 +1819,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             eq_widgets["revealer"] = revealer
             eq_widgets["entry"] = entry
             eq_widgets["save_btn"] = save_btn
+            eq_widgets["reset_btn"] = reset_btn
             eq_widgets["bands_label"] = bands_label
             eq_widgets["last_value"] = value
             eq_widgets["mode"] = mode
@@ -1828,9 +1830,52 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                 curr = eq_widgets["canvas"].get_values()
                 all_presets = preset_manager.get_parametric_eq_presets(bank).values()
                 is_match = any(values_match(curr, pv) for pv in all_presets)
+                # Keep existing behavior for reveal
                 revealer.set_reveal_child(not is_match)
+                # Determine selected real preset (None when Custom selected)
+                try:
+                    idx = eq_widgets["preset_row"].get_selected()
+                    real_names = eq_widgets.get("real_names", [])
+                    selected_real = (
+                        real_names[idx] if 0 <= idx < len(real_names) else None
+                    )
+                except Exception:
+                    selected_real = None
+                # Toggle Reset-to-Preset visibility per helper
+                reset_btn.set_visible(
+                    should_show_reset(selected_real, curr, presets, mode="parametric")
+                )
 
             canvas.on_modified_callback = _update_revealer_visibility
+
+            def on_click_reset(_):
+                # Compute target from selected preset; if unavailable, no-op
+                try:
+                    idx = eq_widgets["preset_row"].get_selected()
+                    real_names = eq_widgets.get("real_names", [])
+                    selected_real = (
+                        real_names[idx] if 0 <= idx < len(real_names) else None
+                    )
+                except Exception:
+                    selected_real = None
+                target = get_reset_target(selected_real, presets)
+                if target is None:
+                    return
+                # Apply on canvas and persist
+                eq_widgets["canvas"].set_values(target)
+                eq_widgets["last_value"] = list(target)
+                self.dbus_client.change_setting(name, list(target))
+                # Persist to cache for current target bank
+                try:
+                    ck = self._cache_key_for_mode(mode)
+                    self._eq_cache.set_value(ck, name, list(target))
+                    if selected_real:
+                        self._eq_cache.set_preset(ck, name, selected_real)
+                except Exception:
+                    pass
+                revealer.set_reveal_child(False)
+
+            reset_btn.connect("clicked", on_click_reset)
 
             # Band controls handlers
             def update_band_ui():
@@ -2032,23 +2077,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                     delete_btn.set_visible(False)
 
             delete_btn.connect("clicked", on_delete_clicked)
-            reset_row = Adw.ActionRow(
-                title="Manual Adjustment", subtitle="Reset all bands to 0dB"
-            )
-            reset_btn = Gtk.Button(label="Reset to Flat")
-            reset_btn.set_valign(Gtk.Align.CENTER)
-            reset_btn.add_css_class("suggested-action")
-
-            def on_reset(_):
-                fv = [0] * len(bands)
-                self._settings_widgets[name]["last_value"] = fv
-                for sc in self._settings_widgets[name]["scales"]:
-                    sc.set_value(0.0)
-                self.dbus_client.change_setting(name, fv)
-
-            reset_btn.connect("clicked", on_reset)
-            reset_row.add_suffix(reset_btn)
-            group.add(reset_row)
+            # Removed legacy Reset-to-Flat row; reset now lives inside the revealer
             vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
             box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
             box.set_halign(Gtk.Align.CENTER)
@@ -2124,6 +2153,8 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                     "value-changed",
                     lambda *_: _update_revealer_visibility_from_scales(),
                 )
+
+            # Graphic reset-to-preset wiring added in Task 2
 
             def on_save_clicked(_):
                 base = entry.get_text().strip() or "Custom-1"
