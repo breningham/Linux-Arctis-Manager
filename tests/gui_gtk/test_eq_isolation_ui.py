@@ -6,7 +6,7 @@ import pytest
 gi = pytest.importorskip("gi")
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Gtk, Adw  # noqa: E402
+from gi.repository import Gtk, Adw, GLib  # noqa: E402
 
 
 class _StubDbusClient:
@@ -133,9 +133,12 @@ def test_eq_target_switches_on_tab_change(monkeypatch, tmp_path):
         stack.props.visible_child_name = "bluetooth"  # type: ignore
         stack.props.visible_child_name = "microphone"  # type: ignore
 
-    # Allow GTK to process queued updates (if any)
-    while Gtk.events_pending():
-        Gtk.main_iteration_do(False)
+    # Allow GTK to process queued updates (if any) using GLib main context (GTK4)
+    ctx = GLib.MainContext.default()
+    # Iterate a few times to flush any idle handlers
+    for _ in range(10):
+        while ctx.pending():
+            ctx.iteration(False)
 
     # Verify target calls recorded
     # Expect at least the last two explicit switches (bluetooth, microphone)

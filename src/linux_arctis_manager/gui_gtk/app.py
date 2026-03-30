@@ -1290,9 +1290,10 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
                 )
                 self.settings_page.add(self._settings_page_groups[section])
             group = self._settings_page_groups[section]
+            # Keep the group hidden when offline, but do not short-circuit.
+            # We still need to construct the Equalizer ViewStack so tests and
+            # tab→target synchronization logic work even without a live device.
             group.set_visible(not is_offline and bool(data))
-            if is_offline:
-                continue
             for name, value in data.items():
                 cfg = config.get(name, {})
                 stype = cfg.get("type")

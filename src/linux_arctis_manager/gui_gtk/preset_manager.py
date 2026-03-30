@@ -303,20 +303,11 @@ class PresetManager:
             return True
         return False
 
-
-def friendly_preset_name(name: str) -> str:
-    """Return a UI-friendly display name for a preset.
-
-    - Strips the 'GG: ' prefix from imported presets while preserving the
-      underlying real key for storage/logic.
-    - Returns the original name for non-GG presets or non-strings.
-    """
-    if isinstance(name, str) and name.startswith("GG: "):
-        return name[4:].strip()
-    return name
-
     def delete_parametric_preset(self, name: str, mode: str = "output") -> bool:
-        """Delete a custom parametric preset. Returns True if deleted."""
+        """Delete a custom parametric preset. Returns True if deleted.
+
+        Built-in presets and GG-imported presets are protected from deletion.
+        """
         if self.is_builtin_parametric(name, mode):
             return False
         bucket = (
@@ -329,3 +320,15 @@ def friendly_preset_name(name: str) -> str:
             self.save()
             return True
         return False
+
+
+def friendly_preset_name(name: str) -> str:
+    """Return a UI-friendly display name for a preset.
+
+    - Strips the 'GG: ' prefix from imported presets while preserving the
+      underlying real key for storage/logic.
+    - Returns the original name for non-GG presets or non-strings.
+    """
+    if isinstance(name, str) and name.startswith("GG: "):
+        return name[4:].strip()
+    return name
