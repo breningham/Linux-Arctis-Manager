@@ -13,3 +13,16 @@ Plans:
 - [x] 01-01-PLAN.md — Fix stuck node editor popover behavior
 - [x] 01-02-PLAN.md — TDD: single highlight per EQ type via eq_math
 - [x] 01-03-PLAN.md — Ensure EQ state isolation across targets with tests
+
+### Phase 02: eq-ux-polish
+
+Goal: Refine EQ user experience by guaranteeing the editor popover always closes after type changes and by cleaning preset naming to remove debug prefixes while preserving correct behavior.
+
+Requirements:
+- GUI-04: After changing a band Type, clicking outside reliably closes the editor (explicit popdown safety) and no stuck popovers occur.
+- GUI-05: Preset list displays friendly names without the "GG:" prefix while selection, deletion rules, and cache mapping still operate on the original keys.
+
+**Plans:** 1/1 plans planned
+
+Plans:
+- [ ] 02-01-PLAN.md — Close editor on Type change and show friendly preset names
