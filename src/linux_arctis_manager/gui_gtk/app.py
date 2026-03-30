@@ -1724,24 +1724,7 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
 
             delete_btn.connect("clicked", on_delete_clicked)
 
-            # Reset row (graphic changes will move this into revealer in Task 2)
-            reset_row = Adw.ActionRow(
-                title="Manual Adjustment", subtitle="Reset all bands to 0dB"
-            )
-            reset_btn = Gtk.Button(label="Reset to Flat")
-            reset_btn.set_valign(Gtk.Align.CENTER)
-            reset_btn.add_css_class("suggested-action")
-
-            def on_reset(_):
-                fv = [0] * len(bands)
-                self._settings_widgets[name]["last_value"] = fv
-                for sc in self._settings_widgets[name]["scales"]:
-                    sc.set_value(0.0)
-                self.dbus_client.change_setting(name, fv)
-
-            reset_btn.connect("clicked", on_reset)
-            reset_row.add_suffix(reset_btn)
-            group.add(reset_row)
+            # Removed legacy Reset-to-Flat row; reset now lives inside the revealer
 
             # Canvas + Band controls + Save Preset revealer
             canvas_row = Adw.ActionRow()
@@ -2125,10 +2108,15 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             entry.set_hexpand(True)
             entry.set_width_chars(30)
             entry.set_placeholder_text("Custom-1")
+            # New: Reset-to-Preset inside revealer
+            reset_btn = Gtk.Button(label="Reset to Preset")
+            reset_btn.add_css_class("destructive-action")
+            reset_btn.add_css_class("pill")
             save_btn = Gtk.Button(label="Save Preset")
             save_btn.add_css_class("suggested-action")
             save_btn.add_css_class("pill")
             rb.append(entry)
+            rb.append(reset_btn)
             rb.append(save_btn)
             revealer.set_child(rb)
             vbox.append(revealer)
@@ -2140,19 +2128,55 @@ class ArctisManagerWindow(Adw.ApplicationWindow):
             eq_widgets["revealer"] = revealer
             eq_widgets["entry"] = entry
             eq_widgets["save_btn"] = save_btn
+            eq_widgets["reset_btn"] = reset_btn
             self._settings_widgets[name] = eq_widgets
 
             def _update_revealer_visibility_from_scales():
                 curr = [float(sc.get_value()) for sc in eq_widgets["scales"]]
-                presets_now = preset_manager.get_graphic_eq_presets().values()
-                is_match = any(list(pv) == curr for pv in presets_now)
+                presets_now_map = preset_manager.get_graphic_eq_presets()
+                is_match = any(list(pv) == curr for pv in presets_now_map.values())
                 eq_widgets["revealer"].set_reveal_child(not is_match)
+                # Determine selected preset name (None if Custom or invalid)
+                try:
+                    idx = eq_widgets["preset_row"].get_selected()
+                    names = eq_widgets.get("preset_names", [])
+                    sel_name = names[idx] if 0 <= idx < len(names) else None
+                except Exception:
+                    sel_name = None
+                selected_real = sel_name if sel_name in presets_now_map else None
+                reset_btn.set_visible(
+                    should_show_reset(
+                        selected_real, curr, presets_now_map, mode="graphic"
+                    )
+                )
 
             for sc in scales:
                 sc.connect(
                     "value-changed",
                     lambda *_: _update_revealer_visibility_from_scales(),
                 )
+
+            def on_click_reset(_):
+                presets_now_map = preset_manager.get_graphic_eq_presets()
+                try:
+                    idx = eq_widgets["preset_row"].get_selected()
+                    names = eq_widgets.get("preset_names", [])
+                    sel_name = names[idx] if 0 <= idx < len(names) else None
+                except Exception:
+                    sel_name = None
+                selected_real = sel_name if sel_name in presets_now_map else None
+                target = get_reset_target(selected_real, presets_now_map)
+                if target is None:
+                    return
+                # Apply the values to all scales
+                for i, sc in enumerate(eq_widgets["scales"]):
+                    if i < len(target):
+                        sc.set_value(float(target[i]))
+                self._settings_widgets[name]["last_value"] = list(target)
+                self.dbus_client.change_setting(name, list(target))
+                revealer.set_reveal_child(False)
+
+            reset_btn.connect("clicked", on_click_reset)
 
             # Graphic reset-to-preset wiring added in Task 2
 
