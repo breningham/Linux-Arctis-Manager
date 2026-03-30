@@ -1,5 +1,5 @@
 import json
-from linux_arctis_manager.constants import SETTINGS_FOLDER
+from linux_arctis_manager import constants as C
 
 
 def normalize_parametric_to_40(values_like) -> list[float] | None:
@@ -74,7 +74,7 @@ class EqStateCache:
     """
 
     def __init__(self) -> None:
-        self.cache_file = SETTINGS_FOLDER / "eq_cache.json"
+        self.cache_file = C.SETTINGS_FOLDER / "eq_cache.json"
         self.parametric: dict[str, dict[str, list[float]]] = {
             "wi_hp": {},
             "bt_hp": {},
@@ -186,7 +186,7 @@ PARAMETRIC_EQ_PRESETS: dict[str, list[float]] = {
 
 class PresetManager:
     def __init__(self):
-        self.preset_file = SETTINGS_FOLDER / "custom_presets.json"
+        self.preset_file = C.SETTINGS_FOLDER / "custom_presets.json"
         self._custom_graphic_eq = {}
         self._custom_parametric_eq = {}
         self._custom_parametric_mic = {}
