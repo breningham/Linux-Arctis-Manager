@@ -7,9 +7,9 @@ Requirements:
 - GUI-02: EQ state is isolated per target (2.4GHz Headphones, Bluetooth Headphones, 2.4GHz Microphone); editing one does not affect the others.
 - GUI-03: On hover/selection, at most one highlight curve is rendered for the current EQ type (no duplicate lines).
 
-**Plans:** 3 plans
+**Plans:** 3/3 plans complete
 
 Plans:
-- [ ] 01-01-PLAN.md — Fix stuck node editor popover behavior
-- [ ] 01-02-PLAN.md — TDD: single highlight per EQ type via eq_math
-- [ ] 01-03-PLAN.md — Ensure EQ state isolation across targets with tests
+- [x] 01-01-PLAN.md — Fix stuck node editor popover behavior
+- [x] 01-02-PLAN.md — TDD: single highlight per EQ type via eq_math
+- [x] 01-03-PLAN.md — Ensure EQ state isolation across targets with tests
