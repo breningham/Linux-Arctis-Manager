@@ -577,6 +577,11 @@ class EQCanvas(Gtk.DrawingArea):
         self.dbus_client.change_setting(self.name, self.values)
         if hasattr(self, "on_modified_callback") and self.on_modified_callback:
             self.on_modified_callback()
+        # Explicitly dismiss editor to avoid rare autohide misses
+        try:
+            self.popover.popdown()
+        except Exception:
+            pass
 
     def _draw(self, area, cr, width, height):
         # Grid within padded plot area
