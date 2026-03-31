@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import threading
 from typing import Any, Callable, Coroutine, Literal, cast
 
 import usb
@@ -15,6 +16,7 @@ from linux_arctis_manager.pactl import PulseAudioManager
 from linux_arctis_manager.settings import DeviceSettings, GeneralSettings
 from linux_arctis_manager.usb_devices_monitor import USBDevicesMonitor
 from linux_arctis_manager.utils import ObservableDict
+from linux_arctis_manager.eq_store import EqStore
 
 
 class TypedDevice(Device):
@@ -48,6 +50,7 @@ class CoreEngine:
         self.device_status_observers = []
         self.device_settings_observers = []
         self.general_settings_observers = []
+        self._usb_lock = threading.Lock()  # Serialize all USB reads/writes
 
         self.general_settings = GeneralSettings.read_from_file()
 
@@ -55,9 +58,12 @@ class CoreEngine:
         self.pa_audio_manager = PulseAudioManager.get_instance()
         self.usb_devices_monitor = USBDevicesMonitor.get_instance()
 
-        self.reload_device_configurations()
+        self.device_configurations = load_device_configurations()
+        # 0x00 wireless (2.4GHz), 0x01 bluetooth, 0x02 microphone (wireless mic EQ)
+        self.eq_target: int = 0
         self.usb_devices_monitor.register_on_connect(self.on_device_connected)
         self.usb_devices_monitor.register_on_disconnect(self.on_device_disconnected)
+        self.eq_store = EqStore()
 
     def new_device_status(self) -> ObservableDict:
         device_status = ObservableDict()
@@ -68,6 +74,7 @@ class CoreEngine:
     def start(self) -> Coroutine:
         self._stopping = False
         self.usb_devices_monitor.start()
+        self.configure_virtual_sinks()
 
         return self.loop()
 
@@ -111,11 +118,12 @@ class CoreEngine:
             return
 
         try:
-            read_input: list[int] = list(
-                await asyncio.to_thread(
-                    self.usb_device.read, endpoint, max_packet_size, 200
-                )
-            )
+
+            def _do_read():
+                with self._usb_lock:
+                    return list(self.usb_device.read(endpoint, max_packet_size, 200))
+
+            read_input: list[int] = await asyncio.to_thread(_do_read)
             if self.device_config is None:
                 return
 
@@ -140,7 +148,8 @@ class CoreEngine:
         except usb.core.USBError as e:
             if e.errno not in [16, 110]:  # 16 (busy), 110 (timeout)
                 self.logger.warning("USB error: %s", e)
-        except AttributeError as e:
+                self.teardown()
+        except AttributeError:
             # If the device disconnects, self.usb_device might be None and generate the error
             pass
 
@@ -183,12 +192,12 @@ class CoreEngine:
             )
             if current_usb_devices is None:
                 continue
-            elif type(current_usb_devices) == Device:
+            elif isinstance(current_usb_devices, Device):
                 current_usb_device = current_usb_devices
                 break
             else:
                 current_usb_device = next(
-                    (d for d in current_usb_devices if type(d) == Device), None
+                    (d for d in current_usb_devices if isinstance(d, Device)), None
                 )
 
             if current_usb_device is not None:
@@ -246,14 +255,13 @@ class CoreEngine:
             self.logger.info(
                 f"Found device {self.usb_device.idProduct:04x}:{self.usb_device.idVendor:04x} ({self.device_config.name})"
             )
-            try:
-                self.usb_device.reset()
-            except usb.core.USBError as e:
-                self.logger.warning(f"Error resetting USB device (non-fatal): {e}")
             self.kernel_detach(self.usb_device, self.device_config)
 
         # Configure the device
         self.init_device()
+
+        if self.usb_device is None:
+            return
 
         self.pa_audio_manager.wait_for_physical_device(
             self.usb_device.idVendor, self.usb_device.idProduct
@@ -266,12 +274,29 @@ class CoreEngine:
 
         self.redirect_to_media_sink()
 
+        # Apply persisted EQ for current target if available
+        try:
+            bank_key = EqStore.map_target_to_key(self.eq_target)
+            bank = self.eq_store.get_bank(bank_key)
+            vals = bank["parametric_eq"] if bank else None
+            if vals is None:
+                vals = self.eq_store.ensure_bank(bank_key)["parametric_eq"]
+            # This will trigger on_setting_changed and apply to hardware
+            self.device_settings.settings["parametric_eq"] = vals
+        except Exception:
+            pass
+
     def init_device(self):
         self.logger.info("Initializing device...")
         if self.device_config and self.device_config.device_init:
             endpoint = self.get_command_endpoint_address()
 
             for bytes in self.device_config.device_init:
+                if self.device_config is None:
+                    self.logger.warning(
+                        "Device config was cleared during init, aborting."
+                    )
+                    break
                 self.send_command(
                     self.translate_init_bytes(bytes),
                     endpoint,
@@ -324,7 +349,8 @@ class CoreEngine:
     def redirect_audio_on_disconnect(self):
         redirect_device = (
             self.general_settings.redirect_audio_on_disconnect_device
-            if self.general_settings.redirect_audio_on_disconnect_device and self.general_settings.redirect_audio_on_disconnect_device != 'none'
+            if self.general_settings.redirect_audio_on_disconnect_device
+            and self.general_settings.redirect_audio_on_disconnect_device != "none"
             else None
         )
         current_default_device = self.pa_audio_manager.get_default_device()
@@ -341,9 +367,9 @@ class CoreEngine:
         result: list[int] = []
 
         for byte in data:
-            if type(byte) == int:
+            if isinstance(byte, int):
                 result.append(byte)
-            elif type(byte) == str:
+            elif isinstance(byte, str):
                 uri = byte.split(".")
                 if uri[0] == "settings":
                     result.append(self.device_settings.get(uri[1]))
@@ -387,7 +413,10 @@ class CoreEngine:
 
         return endpoint
 
-    def on_setting_changed(self, setting: str, value: int) -> None:
+    def on_setting_changed(
+        self, setting: str, value: int | list[int] | list[float]
+    ) -> None:
+        self.logger.debug(f"on_setting_changed: {setting} = {value}")
         if self.device_config is None:
             self.logger.warning(
                 "Attempted to change setting without a device configuration"
@@ -404,16 +433,115 @@ class CoreEngine:
             None,
         )
 
+        # Alias handling: treat 'parametric_eq' as an alias to whatever
+        # setting in the device configuration has type PARAMETRIC_EQ
+        if not config and setting == "parametric_eq":
+            from linux_arctis_manager.config import SettingType as _SettingType
+
+            config = next(
+                (
+                    c
+                    for section in self.device_config.settings.keys()
+                    for c in self.device_config.settings[section]
+                    if getattr(c, "type", None) == _SettingType.PARAMETRIC_EQ
+                ),
+                None,
+            )
+
         if not config:
             self.logger.warning(f"Unknown setting: {setting}")
             return
 
+        # Handle transformations (e.g., nibble packing for Nova 5 EQ)
+        if config.transform == "nibble_pack" and isinstance(value, list):
+            # Baseline is 0x8 (0dB). Each nibble holds 4 bits (0-15).
+            # Bands are packed in pairs: [B2][B1], [B4][B3], ...
+            packed_value = []
+            for i in range(0, len(value), 2):
+                low_band = value[i] + 8
+                high_band = value[i + 1] + 8 if i + 1 < len(value) else 0x8
+
+                # Clamp values to 4 bits
+                low_band = max(0, min(15, low_band))
+                high_band = max(0, min(15, high_band))
+
+                packed_byte = (high_band << 4) | (low_band & 0x0F)
+                packed_value.append(packed_byte)
+            value = packed_value
+
+        # Handle Parametric EQ payload building
+        from linux_arctis_manager.config import SettingType
+
+        if config.type == SettingType.PARAMETRIC_EQ and isinstance(value, list):
+            # Persist into per-target EQ store for future restores
+            try:
+                bank_key = EqStore.map_target_to_key(getattr(self, "eq_target", 0))
+                # Store 40-length if possible (pack will handle 30 in USB)
+                if len(value) == 40:
+                    self.eq_store.set_bank(bank_key, value)
+                elif len(value) == 30:
+                    self.eq_store.set_bank(bank_key, value)
+            except Exception:
+                pass
+            # Target in byte[1]: 0x00 wireless, 0x01 bluetooth, 0x02 microphone (wireless mic EQ)
+            target = getattr(self, "eq_target", 0)
+            header = (
+                config.update_sequence
+                if config.update_sequence
+                else [0x33, max(0, min(2, int(target)))]
+            )
+            payload = []
+            if len(value) == 40:
+                # New format: 10 bands x (freq, gain, Q, type)
+                for b in range(10):
+                    base = b * 4
+                    freq = int(float(value[base]))
+                    gain = int(float(value[base + 1]) * 10)
+                    q = int(float(value[base + 2]) * 1000)
+                    ftype = int(float(value[base + 3]))
+
+                    payload.append(freq & 0xFF)
+                    payload.append((freq >> 8) & 0xFF)
+                    payload.append(max(0, min(0x06, ftype)) & 0xFF)
+                    if gain < 0:
+                        gain = 256 + gain
+                    payload.append(gain & 0xFF)
+                    payload.append(q & 0xFF)
+                    payload.append((q >> 8) & 0xFF)
+            elif len(value) == 30:
+                # Backward-compat: assume all peaking (type=0x01)
+                for i in range(0, 30, 3):
+                    freq = int(value[i])
+                    gain = int(value[i + 1] * 10)
+                    q = int(value[i + 2] * 1000)
+
+                    payload.append(freq & 0xFF)
+                    payload.append((freq >> 8) & 0xFF)
+                    payload.append(0x01)
+                    if gain < 0:
+                        gain = 256 + gain
+                    payload.append(gain & 0xFF)
+                    payload.append(q & 0xFF)
+                    payload.append((q >> 8) & 0xFF)
+            else:
+                # Unexpected length; ignore
+                return
+
+            command = header + payload + [0x00, 0x00]
+            self.send_command(
+                command,
+                self.get_command_endpoint_address(),
+                self.device_config.command_interface_index[1],
+            )
+            return
+
         endpoint = self.get_command_endpoint_address()
-        self.send_command(
-            config.get_update_sequence(value),
-            endpoint,
-            self.device_config.command_interface_index[1],
-        )
+        for seq in config.get_update_sequences(value):
+            self.send_command(
+                seq,
+                endpoint,
+                self.device_config.command_interface_index[1],
+            )
 
     def send_command(
         self, command: list[int], endpoint: int, control_interface_index: int = 0
@@ -424,11 +552,13 @@ class CoreEngine:
         if self.usb_device is None:
             raise Exception("USB device is not available")
 
-        command_str = "".join(f"{byte:02x}" for byte in command)
+        command_str = "".join(f"{byte & 0xFF:02x}" for byte in command)
         if len(command_str) % 2 != 0:
             command_str = f"0{command_str}"
 
-        filler = f"{self.device_config.command_padding.filler:02x}"
+        self.logger.debug(f"Sending command: {command_str}")
+
+        filler = f"{self.device_config.command_padding.filler & 0xFF:02x}"
         if len(filler) % 2 != 0:
             filler = f"0{filler}"
 
@@ -441,26 +571,42 @@ class CoreEngine:
         ]
 
         try:
-            if endpoint != 0x00:
-                self.usb_device.write(endpoint, command_lst)
-            else:
-                # Assuming SET_REPORT
-                bmRequestType = usb.util.build_request_type(
-                    direction=usb.util.CTRL_OUT,
-                    type=usb.util.CTRL_TYPE_CLASS,
-                    recipient=usb.util.CTRL_RECIPIENT_INTERFACE,
-                )
-                bRequest = 0x09  # SET_REPORT
-                report_id = (
-                    self.device_config.command_report_id if self.device_config else 0x00
-                )
-                wValue = (0x02 << 8) | report_id
-                wIndex = control_interface_index
-                self.usb_device.ctrl_transfer(
-                    bmRequestType, bRequest, wValue, wIndex, command_lst
-                )
+            with self._usb_lock:
+                if endpoint != 0x00:
+                    self.usb_device.write(endpoint, command_lst)
+                else:
+                    bmRequestType = self.device_config.command_request_type
+                    if bmRequestType is None:
+                        bmRequestType = usb.util.build_request_type(
+                            direction=usb.util.CTRL_OUT,
+                            type=usb.util.CTRL_TYPE_CLASS,
+                            recipient=usb.util.CTRL_RECIPIENT_INTERFACE,
+                        )
+
+                    bRequest = self.device_config.command_request
+                    if bRequest is None:
+                        bRequest = 0x09  # SET_REPORT
+
+                    report_id = (
+                        self.device_config.command_report_id
+                        if self.device_config
+                        else 0x00
+                    )
+
+                    # If using standard SET_REPORT (0x09), wValue is (ReportType << 8) | ReportID
+                    if bRequest == 0x09:
+                        wValue = (0x02 << 8) | report_id
+                    else:
+                        wValue = 0x0000
+
+                    wIndex = control_interface_index
+                    self.usb_device.ctrl_transfer(
+                        bmRequestType, bRequest, wValue, wIndex, command_lst
+                    )
         except usb.core.USBError as e:
             self.logger.warning(f"Error sending command: {e}")
+            if getattr(e, "errno", None) not in [16, 32, 110]:
+                self.teardown()
 
     def kernel_detach(
         self, usb_device: TypedDevice, config: DeviceConfiguration
@@ -475,16 +621,16 @@ class CoreEngine:
         for interface in interfaces:
             if interface == 0x00:
                 continue
-            if usb_device.is_kernel_driver_active(interface):
-                self.logger.info(
-                    f"Kernel driver active on interface {interface}, detaching..."
-                )
-                usb_device.detach_kernel_driver(interface)
             try:
+                if usb_device.is_kernel_driver_active(interface):
+                    self.logger.info(
+                        f"Kernel driver active on interface {interface}, detaching..."
+                    )
+                    usb_device.detach_kernel_driver(interface)
                 usb.util.claim_interface(usb_device, interface)
                 self.logger.info(f"Claimed interface {interface}")
             except usb.core.USBError as e:
-                self.logger.warning(f"Error claiming interface {interface}: {e}")
+                self.logger.warning(f"Error on interface {interface}: {e}")
 
     def kernel_attach(
         self, usb_device: TypedDevice, config: DeviceConfiguration
@@ -499,11 +645,20 @@ class CoreEngine:
         for interface in interfaces:
             if interface == 0x00:
                 continue
-            if not usb_device.is_kernel_driver_active(interface):
-                self.logger.info(
-                    f"Kernel driver inactive on interface {interface}, re-attaching..."
+            try:
+                usb.util.release_interface(usb_device, interface)
+            except usb.core.USBError:
+                pass
+            try:
+                if not usb_device.is_kernel_driver_active(interface):
+                    self.logger.info(
+                        f"Kernel driver inactive on interface {interface}, re-attaching..."
+                    )
+                    usb_device.attach_kernel_driver(interface)
+            except usb.core.USBError as e:
+                self.logger.warning(
+                    f"Error re-attaching kernel driver on interface {interface}: {e}"
                 )
-                usb_device.attach_kernel_driver(interface)
 
     def guess_interface_endpoint(
         self,
@@ -561,6 +716,7 @@ class CoreEngine:
         )
 
     def teardown(self) -> None:
+        self.logger.info("Tearing down device state...")
         self.pa_audio_manager.sinks_teardown()
         if self.usb_device:
             try:
@@ -579,11 +735,21 @@ class CoreEngine:
                 ):
                     self.kernel_attach(self.usb_device, self.device_config)
             except usb.core.USBError as e:
-                self.logger.warning(f"Error re-attaching kernel driver: {e}")
+                self.logger.warning(
+                    f"Error re-attaching kernel driver (non-fatal): {e}"
+                )
             finally:
-                usb.util.dispose_resources(self.usb_device)
+                try:
+                    usb.util.dispose_resources(self.usb_device)
+                except Exception:
+                    pass
+
         self.redirect_audio_on_disconnect()
 
         self.usb_device = None
         self.device_config = None
         self.device_status = None
+
+        # Notify observers that we are disconnected
+        for observer in self.device_status_observers:
+            observer({})
