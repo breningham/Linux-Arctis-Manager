@@ -3,32 +3,35 @@ import time
 
 import pulsectl
 
-from linux_arctis_manager.constants import (PULSE_CHAT_NODE_NAME,
-                                            PULSE_MEDIA_NODE_NAME,
-                                            STEELSERIES_VENDOR_ID)
+from linux_arctis_manager.constants import (
+    PULSE_CHAT_NODE_NAME,
+    PULSE_MEDIA_NODE_NAME,
+    STEELSERIES_VENDOR_ID,
+)
 
 ONLY_PHYSICAL = 1
 ONLY_VIRTUAL = 2
 ALL_SINKS = 3
+
 
 class TypedPulseSinkInfo(pulsectl.PulseSinkInfo):
     name: str
 
 
 class PulseAudioManager:
-    _instance: 'PulseAudioManager|None' = None
+    _instance: "PulseAudioManager|None" = None
 
     @staticmethod
-    def get_instance() -> 'PulseAudioManager':
+    def get_instance() -> "PulseAudioManager":
         if PulseAudioManager._instance is None:
             PulseAudioManager._instance = PulseAudioManager()
 
         return PulseAudioManager._instance
 
     def __init__(self):
-        self.pulse = pulsectl.Pulse('linux-arctis-manager')
-        self.logger = logging.getLogger('PulseAudioManager')
-    
+        self.pulse = pulsectl.Pulse("linux-arctis-manager")
+        self.logger = logging.getLogger("PulseAudioManager")
+
     def sink_list_wrapper(self) -> list[TypedPulseSinkInfo]:
         retry_attempts = 15
 
@@ -38,15 +41,63 @@ class PulseAudioManager:
                 sinks = self.pulse.sink_list()
                 break
             except pulsectl.PulseError as e:
-                self.logger.error(f'Error while getting sink list: {e}')
+                self.logger.error(f"Error while getting sink list: {e}")
                 retry_attempts -= 1
                 time.sleep(1)
 
-        sinks: list[TypedPulseSinkInfo] = sinks if type(sinks) is list else [sinks] # pyright: ignore[reportAssignmentType]
+        sinks: list[TypedPulseSinkInfo] = sinks if type(sinks) is list else [sinks]  # pyright: ignore[reportAssignmentType]
 
         return sinks
-    
-    def get_arctis_sinks(self, mode: int = ALL_SINKS, vendor_id: int = STEELSERIES_VENDOR_ID, product_id: int|list[int]|None = None) -> list[TypedPulseSinkInfo]:
+
+    def _find_sink_by_identifier(self, identifier: str) -> TypedPulseSinkInfo | None:
+        """Find a sink by robust matching rules.
+
+        Priority:
+        1) Exact match on node.name
+        2) Exact match on node.nick
+        3) Exact match on node.description
+        4) Case-insensitive substring match on node.nick/node.description
+        """
+        if not identifier:
+            return None
+        ident = str(identifier)
+        sinks = self.sink_list_wrapper()
+
+        # Build candidates quickly
+        def prop(s: TypedPulseSinkInfo, key: str) -> str:
+            return s.proplist.get(key, "")
+
+        # 1) Exact node.name
+        m = next((s for s in sinks if prop(s, "node.name") == ident), None)
+        if m:
+            return m
+        # 2) Exact node.nick
+        m = next((s for s in sinks if prop(s, "node.nick") == ident), None)
+        if m:
+            return m
+        # 3) Exact node.description
+        m = next((s for s in sinks if prop(s, "node.description") == ident), None)
+        if m:
+            return m
+        # 4) Case-insensitive substring on nick/description
+        ident_lower = ident.lower()
+        m = next(
+            (
+                s
+                for s in sinks
+                if ident_lower in prop(s, "node.nick").lower()
+                or ident_lower in prop(s, "node.description").lower()
+            ),
+            None,
+        )
+        return m
+
+    def get_arctis_sinks(
+        self,
+        mode: int = ALL_SINKS,
+        vendor_id: int = STEELSERIES_VENDOR_ID,
+        product_id: int | list[int] | None = None,
+    ) -> list[TypedPulseSinkInfo]:
         sinks = self.sink_list_wrapper()
 
         def check_prod_id(product_id_attr: str) -> bool:
@@ -55,10 +106,20 @@ class PulseAudioManager:
 
             lst = product_id if type(product_id) is list else [product_id]
 
-            return product_id_attr in [f'0x{pid:04x}' for pid in lst]
+            return product_id_attr in [f"0x{pid:04x}" for pid in lst]
 
-        physical = [s for s in sinks if s.proplist.get('device.vendor.id', '') == f'0x{vendor_id:04x}' and check_prod_id(s.proplist.get('device.product.id', ''))]
-        virtual = [s for s in sinks if s.proplist.get('node.name', '') in (PULSE_MEDIA_NODE_NAME, PULSE_CHAT_NODE_NAME)]
+        physical = [
+            s
+            for s in sinks
+            if s.proplist.get("device.vendor.id", "") == f"0x{vendor_id:04x}"
+            and check_prod_id(s.proplist.get("device.product.id", ""))
+        ]
+        virtual = [
+            s
+            for s in sinks
+            if s.proplist.get("node.name", "")
+            in (PULSE_MEDIA_NODE_NAME, PULSE_CHAT_NODE_NAME)
+        ]
 
         if mode == ONLY_PHYSICAL:
             sinks = physical
@@ -69,69 +130,115 @@ class PulseAudioManager:
 
         return sinks
 
-    def create_virtual_sink(self, name: str, description: str, sink_output: str) -> None:
-        sink = next((s for s in self.get_arctis_sinks(ONLY_VIRTUAL) if s.proplist.get('node.name', '') == name), None)
+    def create_virtual_sink(
+        self, name: str, description: str, sink_output: str
+    ) -> None:
+        sink = next(
+            (
+                s
+                for s in self.get_arctis_sinks(ONLY_VIRTUAL)
+                if s.proplist.get("node.name", "") == name
+            ),
+            None,
+        )
         if sink:
             return
-        
+
         self.logger.info(f'Creating virtual sink "{name}" -> "{sink_output}"...')
-        escaped_node_description = description.replace(' ', '\\ ')
+        escaped_node_description = description.replace(" ", "\\ ")
         self.pulse.module_load(
-            'module-null-sink',
-            f'sink_name={name} '
-            f'sink_properties=node.description="{escaped_node_description}"'
+            "module-null-sink",
+            f"sink_name={name} "
+            f'sink_properties=node.description="{escaped_node_description}"',
         )
 
         self.pulse.module_load(
-            'module-loopback',
-            f'source={name}.monitor '
-            f'sink={sink_output} '
-            'latency_msec=0'
+            "module-loopback",
+            f"source={name}.monitor sink={sink_output} latency_msec=0",
         )
-    
+
     def remove_virtual_sink(self, name: str) -> None:
-        sink = next((s for s in self.get_arctis_sinks(ONLY_VIRTUAL) if s.proplist.get('node.name', '') == name), None)
+        sink = next(
+            (
+                s
+                for s in self.get_arctis_sinks(ONLY_VIRTUAL)
+                if s.proplist.get("node.name", "") == name
+            ),
+            None,
+        )
         if not sink:
             return
-        
+
         self.logger.info(f'Removing virtual sink "{name}"...')
         modules = self.pulse.module_list()
         for module in modules:
             if module.argument and name in module.argument:
                 self.pulse.module_unload(module.index)
-    
-    def wait_for_physical_device(self, vendor_id: int, product_id: int, attempts: int = 10) -> bool:
-        vendor_id_hex = f'0x{vendor_id:04x}'
-        product_id_hex = f'0x{product_id:04x}'
+
+    def wait_for_physical_device(
+        self, vendor_id: int, product_id: int, attempts: int = 10
+    ) -> bool:
+        vendor_id_hex = f"0x{vendor_id:04x}"
+        product_id_hex = f"0x{product_id:04x}"
 
         while attempts > 0:
-            if next((s for s in self.get_arctis_sinks(ONLY_PHYSICAL, vendor_id=vendor_id, product_id=product_id)), None):
+            if next(
+                (
+                    s
+                    for s in self.get_arctis_sinks(
+                        ONLY_PHYSICAL, vendor_id=vendor_id, product_id=product_id
+                    )
+                ),
+                None,
+            ):
                 return True
 
             attempts -= 1
             time.sleep(1)
-        
-        self.logger.error(f'Failed to find SteelSeries Arctis device {vendor_id:04x}:{product_id:04x} after {attempts} attempts')
+
+        self.logger.error(
+            f"Failed to find SteelSeries Arctis device {vendor_id:04x}:{product_id:04x} after {attempts} attempts"
+        )
 
         return False
 
     def redirect_audio(self, output_sink_node_name: str) -> None:
-        self.logger.info(f'Redirecting audio to {output_sink_node_name}...')
+        self.logger.info(f"Redirecting audio to {output_sink_node_name}...")
 
-        sink = next((s for s in self.sink_list_wrapper() if s.proplist.get('node.nick', '') == output_sink_node_name or s.proplist.get('node.name', '') == output_sink_node_name), None)
+        sink = self._find_sink_by_identifier(output_sink_node_name)
         if sink is None:
-            self.logger.error(f'Failed to find sink {output_sink_node_name} to set it as default')
+            sinks = self.sink_list_wrapper()
+            candidates = [
+                {
+                    "node.name": s.proplist.get("node.name", ""),
+                    "node.nick": s.proplist.get("node.nick", ""),
+                    "node.description": s.proplist.get("node.description", ""),
+                }
+                for s in sinks
+            ]
+            self.logger.warning(
+                "Failed to find sink '%s'. Available candidates: %s",
+                output_sink_node_name,
+                candidates,
+            )
             return
         self.pulse.default_set(sink)
-    
-    def get_default_device(self) -> TypedPulseSinkInfo|None:
+
+    def get_default_device(self) -> TypedPulseSinkInfo | None:
         server_info = self.pulse.server_info()
-        default_sink_name: str|None = getattr(server_info, 'default_sink_name', None)
+        default_sink_name: str | None = getattr(server_info, "default_sink_name", None)
 
         if default_sink_name is None:
             return None
-        
-        sink = next((s for s in self.sink_list_wrapper() if s.proplist.get('node.name', '') == default_sink_name), None)
+
+        sink = next(
+            (
+                s
+                for s in self.sink_list_wrapper()
+                if s.proplist.get("node.name", "") == default_sink_name
+            ),
+            None,
+        )
 
         return sink
 
@@ -143,29 +250,53 @@ class PulseAudioManager:
 
         sinks = self.get_arctis_sinks(ONLY_VIRTUAL)
 
-        media = next((s for s in sinks if s.proplist.get('node.name', '') == PULSE_MEDIA_NODE_NAME), None)
-        chat = next((s for s in sinks if s.proplist.get('node.name', '') == PULSE_CHAT_NODE_NAME), None)
+        media = next(
+            (
+                s
+                for s in sinks
+                if s.proplist.get("node.name", "") == PULSE_MEDIA_NODE_NAME
+            ),
+            None,
+        )
+        chat = next(
+            (
+                s
+                for s in sinks
+                if s.proplist.get("node.name", "") == PULSE_CHAT_NODE_NAME
+            ),
+            None,
+        )
 
         if media:
             self.pulse.volume_set_all_chans(media, media_mix / 100)
         if chat:
             self.pulse.volume_set_all_chans(chat, chat_mix / 100)
 
-    def sinks_setup(self, device_name: str, vendor_id: int, product_id: int|list[int]|None):
-        real_sinks = self.get_arctis_sinks(ONLY_PHYSICAL, vendor_id=vendor_id, product_id=product_id)
+    def sinks_setup(
+        self, device_name: str, vendor_id: int, product_id: int | list[int] | None
+    ):
+        real_sinks = self.get_arctis_sinks(
+            ONLY_PHYSICAL, vendor_id=vendor_id, product_id=product_id
+        )
 
         if not real_sinks:
-            self.logger.warning('No SteelSeries Arctis sink found.')
+            self.logger.warning("No SteelSeries Arctis sink found.")
             return
-        
+
         # Prioritize analog-stereo
-        real_sink = next((s for s in real_sinks if 'analog-stereo' in s.name), real_sinks[0])
-        
-        self.create_virtual_sink(PULSE_MEDIA_NODE_NAME, f'{device_name} Media', real_sink.name)
-        self.create_virtual_sink(PULSE_CHAT_NODE_NAME, f'{device_name} Chat', real_sink.name)
+        real_sink = next(
+            (s for s in real_sinks if "analog-stereo" in s.name), real_sinks[0]
+        )
+
+        self.create_virtual_sink(
+            PULSE_MEDIA_NODE_NAME, f"{device_name} Media", real_sink.name
+        )
+        self.create_virtual_sink(
+            PULSE_CHAT_NODE_NAME, f"{device_name} Chat", real_sink.name
+        )
 
     def sinks_teardown(self):
-        self.logger.info('Removing virtual sinks...')
+        self.logger.info("Removing virtual sinks...")
 
         self.remove_virtual_sink(PULSE_MEDIA_NODE_NAME)
         self.remove_virtual_sink(PULSE_CHAT_NODE_NAME)
