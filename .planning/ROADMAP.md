@@ -57,3 +57,19 @@ Requirements:
 Plans:
 - [x] 04-01-PLAN.md — TDD: visibility + target logic for Reset action
 - [x] 04-02-PLAN.md — Integrate Reset-in-revealer for Parametric + Graphic EQ
+
+### Phase 05: audio-routing-resilience
+
+Goal: Make audio routing resilient by listing real PulseAudio sinks in settings and reliably redirecting audio using human-friendly names, while eliminating parametric EQ alias warnings and ensuring the GTK app is not blank when offline.
+
+Requirements:
+- AR-01: Settings dropdown lists available PulseAudio sinks (not just 'none') using robust property fallbacks.
+- AR-02: Redirect on connect/disconnect succeeds when a user-selected device name (e.g., "Soundbar") is configured.
+- AR-03: No "Unknown setting: parametric_eq" warnings; alias maps to actual PARAMETRIC_EQ configuration and applies to hardware.
+- AR-04: GTK app opens to a non-blank window and shows an offline/disconnected hero state when the device is not online.
+
+**Plans:** 0/2 plans complete
+
+Plans:
+- [ ] 05-01-PLAN.md — Robust PulseAudio device options + resilient redirect
+- [ ] 05-02-PLAN.md — Parametric EQ alias mapping + GTK offline smoke test
