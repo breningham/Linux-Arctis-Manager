@@ -7,16 +7,19 @@ from dbus_next.aio.message_bus import MessageBus
 from dbus_next.service import ServiceInterface, method, signal
 
 from linux_arctis_manager.config import DeviceConfiguration, parsed_status
-from linux_arctis_manager.constants import (DBUS_BUS_NAME,
-                                            DBUS_CONFIG_INTERFACE_NAME,
-                                            DBUS_CONFIG_OBJECT_PATH,
-                                            DBUS_SETTINGS_INTERFACE_NAME,
-                                            DBUS_SETTINGS_OBJECT_PATH,
-                                            DBUS_STATUS_INTERFACE_NAME,
-                                            DBUS_STATUS_OBJECT_PATH)
+from linux_arctis_manager.constants import (
+    DBUS_BUS_NAME,
+    DBUS_CONFIG_INTERFACE_NAME,
+    DBUS_CONFIG_OBJECT_PATH,
+    DBUS_SETTINGS_INTERFACE_NAME,
+    DBUS_SETTINGS_OBJECT_PATH,
+    DBUS_STATUS_INTERFACE_NAME,
+    DBUS_STATUS_OBJECT_PATH,
+)
 from linux_arctis_manager.core import CoreEngine
 from linux_arctis_manager.pactl import TypedPulseSinkInfo
 from linux_arctis_manager.settings import DeviceSettings, GeneralSettings
+from linux_arctis_manager.eq_store import EqStore
 
 
 class ArctisManagerDbusConfigService(ServiceInterface):
@@ -24,24 +27,27 @@ class ArctisManagerDbusConfigService(ServiceInterface):
         super().__init__(DBUS_CONFIG_INTERFACE_NAME)
         self.core_engine = core
 
-    @method('ReloadConfigs')
-    def reload_configs(self) -> 'b': # type: ignore
+    @method("ReloadConfigs")
+    def reload_configs(self) -> "b":  # type: ignore
         self.core_engine.reload_device_configurations()
 
         return True
+
 
 class ArctisManagerDbusStatusService(ServiceInterface):
     def __init__(self, core: CoreEngine):
         super().__init__(DBUS_STATUS_INTERFACE_NAME)
         self.core_engine = core
-        self.last_device_status = ''
+        self.last_device_status = ""
         self.core_engine.register_status_observer(self._on_status_changed)
-    
+
     @staticmethod
-    def _device_status_to_dbus_status(device_status: dict[str, int]|None, device_config: DeviceConfiguration|None) -> str:
+    def _device_status_to_dbus_status(
+        device_status: dict[str, int] | None, device_config: DeviceConfiguration | None
+    ) -> str:
         if not device_status or not device_config or not device_config.status:
             return json.dumps({})
-        
+
         result = {}
         raw_status = parsed_status(device_status, device_config)
         for category, status_list in device_config.status.representation.items():
@@ -49,20 +55,24 @@ class ArctisManagerDbusStatusService(ServiceInterface):
             for status in status_list:
                 if status in raw_status:
                     result[category][status] = {
-                        'value': raw_status[status],
-                        'type': 'label' if type(raw_status[status]) == str else device_config.status_parse[status].type.value
+                        "value": raw_status[status],
+                        "type": "label"
+                        if type(raw_status[status]) == str
+                        else device_config.status_parse[status].type.value,
                     }
             if not result[category]:
                 del result[category]
 
         return json.dumps(result)
 
-    @signal('StatusChanged')
-    def signal_status_changed(self, status_json_str: 's') -> 's': # type: ignore
+    @signal("StatusChanged")
+    def signal_status_changed(self, status_json_str: "s") -> "s":  # type: ignore
         return status_json_str
 
     def _on_status_changed(self, new_status: dict[str, int]) -> None:
-        dumped = self._device_status_to_dbus_status(new_status, self.core_engine.device_config)
+        dumped = self._device_status_to_dbus_status(
+            new_status, self.core_engine.device_config
+        )
 
         if dumped == self.last_device_status:
             return
@@ -71,129 +81,263 @@ class ArctisManagerDbusStatusService(ServiceInterface):
 
         self.signal_status_changed(dumped)
 
-    @method('GetStatus')
-    def method_get_status(self) -> 's': # type: ignore
-        return self._device_status_to_dbus_status(self.core_engine.device_status, self.core_engine.device_config)
+    @method("GetStatus")
+    def method_get_status(self) -> "s":  # type: ignore
+        return self._device_status_to_dbus_status(
+            self.core_engine.device_status, self.core_engine.device_config
+        )
 
 
 class ArctisManagerDbusSettingsService(ServiceInterface):
     def __init__(self, core: CoreEngine):
         super().__init__(DBUS_SETTINGS_INTERFACE_NAME)
         self.core_engine = core
-        self.logger = logging.getLogger('ArctisManagerDbusSettingsService')
-    
-    def settings_to_json(self, general_settings: GeneralSettings, device_config: DeviceConfiguration|None, device_settings: DeviceSettings|None) -> str:
-        settings = {
-            'general': general_settings.to_dict(),
-            'device': {},
-            'settings_config': {
+        self.logger = logging.getLogger("ArctisManagerDbusSettingsService")
+
+    def settings_to_json(
+        self,
+        general_settings: GeneralSettings,
+        device_config: DeviceConfiguration | None,
+        device_settings: DeviceSettings | None,
+    ) -> str:
+        settings: dict[str, object] = {
+            "general": general_settings.to_dict(),
+            "device": {},
+            "settings_config": {
                 config.name: config.to_dict()
                 for config in self.core_engine.general_settings.settings_config
             },
         }
 
         if device_config and device_settings:
-            settings.update({'device': device_settings.settings})
-            settings['device_name'] = device_config.name
-        if device_config and device_settings:
-            settings.update({'device': device_settings.settings})
-            settings['device_name'] = device_config.name
-            settings['settings_config'].update({
-                config.name: config.to_dict()
-                for config in list(itertools.chain.from_iterable(
-                    device_config.settings.values()
-                ))
-            })
+            settings.update({"device": device_settings.settings})
+            settings["device_name"] = device_config.name
+            settings["settings_config"].update(
+                {
+                    config.name: config.to_dict()
+                    for config in list(
+                        itertools.chain.from_iterable(device_config.settings.values())
+                    )
+                }
+            )
+
+        # Add per-target parametric EQ banks so UIs can hydrate all tabs at once
+        try:
+            settings["parametric_eq_banks"] = (
+                self.core_engine.eq_store.all_banks_payload()
+                if hasattr(self.core_engine, "eq_store")
+                else {}
+            )
+        except Exception:
+            settings["parametric_eq_banks"] = {}
 
         return json.dumps(settings)
 
-    @signal('SettingsChanged')
-    def signal_settings_changed(self, settings_json_str: 's') -> 's': # type: ignore
+    @signal("SettingsChanged")
+    def signal_settings_changed(self, settings_json_str: "s") -> "s":  # type: ignore
         return settings_json_str
 
-    @method('GetSettings')
-    def get_settings(self) -> 's': # type: ignore
-        return self.settings_to_json(self.core_engine.general_settings, self.core_engine.device_config, self.core_engine.device_settings)
-    
-    @method('SetSetting')
-    def set_setting(self, setting: 's', value: 's') -> 'b': # type: ignore
+    @method("GetSettings")
+    def get_settings(self) -> "s":  # type: ignore
+        return self.settings_to_json(
+            self.core_engine.general_settings,
+            self.core_engine.device_config,
+            self.core_engine.device_settings,
+        )
+
+    @method("SetSetting")
+    def set_setting(self, setting: "s", value: "s") -> "b":  # type: ignore
         try:
             value = json.loads(value)
+            self.logger.debug(f"SetSetting: {setting} = {value} (type: {type(value)})")
         except json.JSONDecodeError as e:
-            self.logger.error(f'SetSetting: error while parsing JSON value ({value}): {e}')
+            self.logger.error(
+                f"SetSetting: error while parsing JSON value ({value}): {e}"
+            )
 
             return False
 
         general_settings_keys = self.core_engine.general_settings.to_dict().keys()
         if setting in general_settings_keys:
-            config = next((config for config in self.core_engine.general_settings.settings_config if config.name == setting), None)
+            config = next(
+                (
+                    config
+                    for config in self.core_engine.general_settings.settings_config
+                    if config.name == setting
+                ),
+                None,
+            )
             if not config:
-                self.logger.error(f'Unknown general setting configuration: {setting}')
+                self.logger.error(f"Unknown general setting configuration: {setting}")
                 return False
-            
+
             # TODO add type checking in case of default_value is None
-            if type(config.default_value) != type(value) and config.default_value is not None:
-                self.logger.error(f'Value type mismatch: {type(config.default_value)} != {type(value)}')
+            if (
+                type(config.default_value) != type(value)
+                and config.default_value is not None
+            ):
+                self.logger.error(
+                    f"Value type mismatch: {type(config.default_value)} != {type(value)}"
+                )
                 return False
 
             setattr(self.core_engine.general_settings, setting, value)
             self.core_engine.general_settings.write_to_file()
 
-            self.signal_settings_changed(self.settings_to_json(self.core_engine.general_settings, self.core_engine.device_config, self.core_engine.device_settings))
+            self.signal_settings_changed(
+                self.settings_to_json(
+                    self.core_engine.general_settings,
+                    self.core_engine.device_config,
+                    self.core_engine.device_settings,
+                )
+            )
 
             return True
-        
+
         if self.core_engine.device_config and self.core_engine.device_settings:
             device_settings_keys = self.core_engine.device_settings.settings.keys()
             if setting in device_settings_keys:
-                config = next((config for section in self.core_engine.device_config.settings.keys() for config in self.core_engine.device_config.settings[section]), None)
+                # FIX: Search for the SPECIFIC setting by name, don't just take the first one found in the iterator
+                config = next(
+                    (
+                        config
+                        for section in self.core_engine.device_config.settings.keys()
+                        for config in self.core_engine.device_config.settings[section]
+                        if config.name == setting
+                    ),
+                    None,
+                )
+
                 if not config:
-                    self.logger.error(f'Unknown device setting configuration: {setting}')
-                    return False
-                
-                if type(config.default_value) != type(value):
-                    self.logger.error(f'Value type mismatch: {type(config.default_value)} != {type(value)}')
+                    self.logger.error(
+                        f"Unknown device setting configuration: {setting}"
+                    )
                     return False
 
+                if type(config.default_value) != type(value):
+                    self.logger.error(
+                        f"Value type mismatch: {type(config.default_value)} != {type(value)}"
+                    )
+                    return False
+
+                # For Parametric EQ, also persist into EqStore for the active target
+                if setting == "parametric_eq":
+                    try:
+                        bank_key = EqStore.map_target_to_key(
+                            getattr(self.core_engine, "eq_target", 0)
+                        )
+                        self.core_engine.eq_store.set_bank(bank_key, value)
+                    except Exception:
+                        pass
                 self.core_engine.device_settings.settings[setting] = value
                 self.core_engine.device_settings.write_to_file()
 
-                self.signal_settings_changed(self.settings_to_json(self.core_engine.general_settings, self.core_engine.device_config, self.core_engine.device_settings))
+                self.signal_settings_changed(
+                    self.settings_to_json(
+                        self.core_engine.general_settings,
+                        self.core_engine.device_config,
+                        self.core_engine.device_settings,
+                    )
+                )
 
                 return True
 
         return False
-    
-    @method('GetListOptions')
-    def get_list_options(self, list_name: 's') -> 's': # type: ignore
-        result = []
-        if list_name == 'pulse_audio_devices':
-            sinks: list[TypedPulseSinkInfo] = self.core_engine.pa_audio_manager.pulse.sink_list()
-            for sink in sinks:
-                id = sink.proplist.get('node.nick', '')
-                name = sink.proplist.get('node.nick', '')
 
-                if id and name:
-                    result.append({ 'id': id, 'name': name })
+    @method("SetEqTarget")
+    def set_eq_target(self, target: "s") -> "b":  # type: ignore
+        """Set destination for parametric EQ writes: 'wireless', 'bluetooth', or 'microphone'."""
+        mapping = {
+            "wireless": 0,
+            "bluetooth": 1,
+            "microphone": 2,
+        }
+        t = mapping.get(target, None)
+        if t is None:
+            self.logger.error(f"SetEqTarget: invalid target '{target}'")
+            return False
+        try:
+            setattr(self.core_engine, "eq_target", int(t))
+            self.logger.info(f"SetEqTarget: set to {target} ({t})")
+            # Apply bank for new target if available, then emit SettingsChanged
+            try:
+                bank_key = EqStore.map_target_to_key(int(t))
+                bank = self.core_engine.eq_store.get_bank(bank_key)
+                vals = bank["parametric_eq"] if bank else None
+                if vals is None:
+                    vals = self.core_engine.eq_store.ensure_bank(bank_key)[
+                        "parametric_eq"
+                    ]
+                self.core_engine.device_settings.settings["parametric_eq"] = vals
+            except Exception as e:
+                self.logger.debug(f"SetEqTarget: apply bank failed: {e}")
+            # Notify
+            try:
+                self.signal_settings_changed(
+                    self.settings_to_json(
+                        self.core_engine.general_settings,
+                        self.core_engine.device_config,
+                        self.core_engine.device_settings,
+                    )
+                )
+            except Exception:
+                pass
+            return True
+        except Exception as e:
+            self.logger.error(f"SetEqTarget: failed: {e}")
+            return False
+
+    @method("GetListOptions")
+    def get_list_options(self, list_name: "s") -> "s":  # type: ignore
+        result: list[dict[str, str]] = []
+        if list_name == "pulse_audio_devices":
+            # Build a robust options list from PulseAudio sinks even when node.nick is missing
+            try:
+                sinks: list[TypedPulseSinkInfo] = (
+                    self.core_engine.pa_audio_manager.pulse.sink_list()
+                )
+            except Exception:
+                sinks = []
+
+            for sink in sinks:
+                proplist = getattr(sink, "proplist", {}) or {}
+                # Stable identifier preference
+                sink_id = (
+                    proplist.get("node.name")
+                    or proplist.get("node.nick")
+                    or proplist.get("device.string")
+                    or getattr(sink, "name", "")
+                )
+                # Human-friendly description preference
+                label = (
+                    proplist.get("node.nick")
+                    or proplist.get("node.description")
+                    or proplist.get("device.description")
+                    or sink_id
+                )
+
+                if sink_id:
+                    result.append({"id": str(sink_id), "name": str(label)})
 
         return json.dumps(result)
 
+
 class DbusManager:
-    _instance: 'DbusManager|None' = None
+    _instance: "DbusManager|None" = None
 
     @staticmethod
-    def getInstance() -> 'DbusManager':
+    def getInstance() -> "DbusManager":
         if DbusManager._instance is None:
             DbusManager._instance = DbusManager()
 
         return DbusManager._instance
 
     def __init__(self):
-        self.log = logging.getLogger('DbusManager')
-    
+        self.log = logging.getLogger("DbusManager")
+
     def setup_sinks(self):
         pass
-    
+
     async def start(self, core_engine: CoreEngine):
         self.log.info("Initializing service...")
 
@@ -203,7 +347,7 @@ class DbusManager:
         for tpl in [
             (ArctisManagerDbusConfigService, DBUS_CONFIG_OBJECT_PATH),
             (ArctisManagerDbusSettingsService, DBUS_SETTINGS_OBJECT_PATH),
-            (ArctisManagerDbusStatusService, DBUS_STATUS_OBJECT_PATH)
+            (ArctisManagerDbusStatusService, DBUS_STATUS_OBJECT_PATH),
         ]:
             interface = tpl[0](self.core_engine)
             bus.export(tpl[1], interface)
@@ -211,9 +355,9 @@ class DbusManager:
         await bus.request_name(DBUS_BUS_NAME)
 
     async def wait_for_stop(self) -> None:
-        while not getattr(self, '_stopping', False):
+        while not getattr(self, "_stopping", False):
             await asyncio.sleep(1)
-        
+
         self.core_engine.stop()
         self.core_engine.teardown()
 
