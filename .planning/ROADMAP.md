@@ -68,8 +68,8 @@ Requirements:
 - AR-03: No "Unknown setting: parametric_eq" warnings; alias maps to actual PARAMETRIC_EQ configuration and applies to hardware.
 - AR-04: GTK app opens to a non-blank window and shows an offline/disconnected hero state when the device is not online.
 
-**Plans:** 0/2 plans complete
+**Plans:** 2/2 plans complete
 
 Plans:
-- [ ] 05-01-PLAN.md — Robust PulseAudio device options + resilient redirect
-- [ ] 05-02-PLAN.md — Parametric EQ alias mapping + GTK offline smoke test
+- [x] 05-01-PLAN.md — Robust PulseAudio device options + resilient redirect
+- [x] 05-02-PLAN.md — Parametric EQ alias mapping + GTK offline smoke test
